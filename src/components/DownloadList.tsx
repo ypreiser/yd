@@ -1,15 +1,18 @@
 import type { DownloadProgress } from "../lib/tauri";
 import DownloadItem from "./DownloadItem";
+import { useT } from "../lib/i18n";
 
 interface DownloadListProps {
   items: DownloadProgress[];
 }
 
 export default function DownloadList({ items }: DownloadListProps) {
+  const t = useT();
+
   if (items.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
-        No downloads yet
+      <div className="flex-1 flex items-center justify-center text-zinc-400 dark:text-zinc-500 text-sm">
+        {t.noDownloads}
       </div>
     );
   }

@@ -4,9 +4,12 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     pub download_dir: String,
     pub audio_format: String,
+    pub theme: String,
+    pub language: String,
 }
 
 impl Default for AppConfig {
@@ -18,6 +21,8 @@ impl Default for AppConfig {
         Self {
             download_dir,
             audio_format: "m4a".to_string(),
+            theme: "dark".to_string(),
+            language: "he".to_string(),
         }
     }
 }

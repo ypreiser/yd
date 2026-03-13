@@ -4,6 +4,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export interface AppConfig {
   download_dir: string;
   audio_format: string;
+  theme: "dark" | "light";
+  language: "en" | "he";
 }
 
 export interface DownloadProgress {
@@ -11,7 +13,7 @@ export interface DownloadProgress {
   url: string;
   percent: number;
   title: string | null;
-  status: "queued" | "downloading" | "converting" | "done" | "error";
+  status: "queued" | "downloading" | "converting" | "done" | "cancelled" | "error";
   error: string | null;
 }
 

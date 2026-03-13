@@ -2,14 +2,17 @@ import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AppConfig } from "../lib/tauri";
 import { getConfig, setConfig } from "../lib/tauri";
+import { useT } from "../lib/i18n";
 
 interface SettingsProps {
   onClose: () => void;
+  onConfigSaved: (config: AppConfig) => void;
 }
 
 const AUDIO_FORMATS = ["m4a", "mp3", "opus", "flac"];
 
-export default function Settings({ onClose }: SettingsProps) {
+export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
+  const t = useT();
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -29,17 +32,24 @@ export default function Settings({ onClose }: SettingsProps) {
     setSaving(true);
     await setConfig(config);
     setSaving(false);
+    onConfigSaved(config);
     onClose();
   }
 
   if (!config) return null;
 
-  return (
-    <div className="flex flex-col gap-6">
-      <h2 className="text-lg font-semibold text-zinc-100">Settings</h2>
+  const inputClass =
+    "w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors";
 
+  return (
+    <div className="flex flex-col gap-6 max-w-lg">
+      <h2 className="text-lg font-semibold">{t.settings}</h2>
+
+      {/* Download Directory */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-zinc-400">Download Directory</label>
+        <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {t.downloadDir}
+        </label>
         <div className="flex gap-2">
           <input
             type="text"
@@ -47,25 +57,28 @@ export default function Settings({ onClose }: SettingsProps) {
             onChange={(e) =>
               setLocalConfig({ ...config, download_dir: e.target.value })
             }
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className={`flex-1 ${inputClass}`}
           />
           <button
             onClick={handlePickDir}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors"
+            className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
           >
-            Browse
+            {t.browse}
           </button>
         </div>
       </div>
 
+      {/* Audio Format */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-zinc-400">Audio Format</label>
+        <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {t.audioFormat}
+        </label>
         <select
           value={config.audio_format}
           onChange={(e) =>
             setLocalConfig({ ...config, audio_format: e.target.value })
           }
-          className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className={inputClass}
         >
           {AUDIO_FORMATS.map((f) => (
             <option key={f} value={f}>
@@ -75,19 +88,67 @@ export default function Settings({ onClose }: SettingsProps) {
         </select>
       </div>
 
-      <div className="flex gap-2 justify-end">
+      {/* Theme */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {t.theme}
+        </label>
+        <div className="flex gap-2">
+          {(["dark", "light"] as const).map((th) => (
+            <button
+              key={th}
+              onClick={() => setLocalConfig({ ...config, theme: th })}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                config.theme === th
+                  ? "border-indigo-500 bg-indigo-600 text-white"
+                  : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {th === "dark" ? t.themeDark : t.themeLight}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Language */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {t.language}
+        </label>
+        <div className="flex gap-2">
+          {([
+            { code: "he" as const, label: "עברית" },
+            { code: "en" as const, label: "English" },
+          ]).map(({ code, label }) => (
+            <button
+              key={code}
+              onClick={() => setLocalConfig({ ...config, language: code })}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                config.language === code
+                  ? "border-indigo-500 bg-indigo-600 text-white"
+                  : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 justify-end pt-2">
         <button
           onClick={onClose}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+          className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
         >
-          Cancel
+          {t.cancel}
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40 transition-colors"
         >
-          Save
+          {t.save}
         </button>
       </div>
     </div>
