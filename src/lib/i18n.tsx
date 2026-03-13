@@ -27,6 +27,14 @@ export interface Translations {
   save: string;
   themeDark: string;
   themeLight: string;
+  version: string;
+  // update
+  updateAvailable: string;
+  updateDownloading: string;
+  updateReady: string;
+  updateNow: string;
+  checkForUpdates: string;
+  upToDate: string;
 }
 
 const en: Translations = {
@@ -52,6 +60,13 @@ const en: Translations = {
   save: "Save",
   themeDark: "Dark",
   themeLight: "Light",
+  version: "Version",
+  updateAvailable: "Update available",
+  updateDownloading: "Downloading update...",
+  updateReady: "Update ready — restart to apply",
+  updateNow: "Restart",
+  checkForUpdates: "Check for updates",
+  upToDate: "Up to date",
 };
 
 const he: Translations = {
@@ -77,6 +92,13 @@ const he: Translations = {
   save: "שמירה",
   themeDark: "כהה",
   themeLight: "בהיר",
+  version: "גרסה",
+  updateAvailable: "עדכון זמין",
+  updateDownloading: "מוריד עדכון...",
+  updateReady: "העדכון מוכן — הפעל מחדש להחלה",
+  updateNow: "הפעל מחדש",
+  checkForUpdates: "בדוק עדכונים",
+  upToDate: "מעודכן",
 };
 
 const locales: Record<Language, Translations> = { en, he };

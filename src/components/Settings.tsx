@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { AppConfig } from "../lib/tauri";
 import { getConfig, setConfig } from "../lib/tauri";
 import { useT } from "../lib/i18n";
+import { getVersion } from "@tauri-apps/api/app";
 
 interface SettingsProps {
   onClose: () => void;
@@ -15,9 +16,11 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const t = useT();
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
     getConfig().then(setLocalConfig);
+    getVersion().then(setAppVersion);
   }, []);
 
   async function handlePickDir() {
@@ -134,6 +137,13 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           ))}
         </div>
       </div>
+
+      {/* Version */}
+      {appVersion && (
+        <div className="text-xs text-zinc-400 dark:text-zinc-500">
+          {t.version} {appVersion}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2 justify-end pt-2">

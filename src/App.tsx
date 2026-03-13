@@ -7,8 +7,70 @@ import type { DownloadProgress, AppConfig } from "./lib/tauri";
 import { downloadBatch, onDownloadProgress, getConfig } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 type View = "main" | "settings";
+type UpdateStatus = "idle" | "available" | "downloading" | "ready";
+
+function UpdateBanner() {
+  const t = useT();
+  const [status, setStatus] = useState<UpdateStatus>("idle");
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    check()
+      .then((update) => {
+        if (update) {
+          setVersion(update.version);
+          setStatus("available");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleUpdate() {
+    if (status !== "available") return;
+    setStatus("downloading");
+    try {
+      const update = await check();
+      if (update) {
+        await update.downloadAndInstall();
+        setStatus("ready");
+      }
+    } catch {
+      setStatus("available");
+    }
+  }
+
+  if (status === "idle") return null;
+
+  return (
+    <div className="flex items-center justify-between px-4 py-2 bg-indigo-600 text-white text-sm">
+      <span>
+        {status === "available" && `${t.updateAvailable}: v${version}`}
+        {status === "downloading" && t.updateDownloading}
+        {status === "ready" && t.updateReady}
+      </span>
+      {status === "available" && (
+        <button
+          onClick={handleUpdate}
+          className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+        >
+          {t.updateNow}
+        </button>
+      )}
+      {status === "ready" && (
+        <button
+          onClick={() => relaunch()}
+          className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+        >
+          {t.updateNow}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function Header({
   view,
@@ -100,6 +162,7 @@ function App() {
   return (
     <I18nContext.Provider value={t}>
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
+        <UpdateBanner />
         <Header view={view} setView={setView} />
         <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden">
           {view === "settings" ? (
