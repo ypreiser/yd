@@ -10,6 +10,7 @@ const STATUS_LABELS: Record<string, string> = {
   downloading: "Downloading",
   converting: "Converting",
   done: "Done",
+  cancelled: "Cancelled",
   error: "Error",
 };
 
@@ -18,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
   downloading: "text-indigo-400",
   converting: "text-amber-400",
   done: "text-emerald-400",
+  cancelled: "text-zinc-500",
   error: "text-red-400",
 };
 
@@ -63,7 +65,7 @@ export default function DownloadItem({ item }: DownloadItemProps) {
           )}
         </div>
       </div>
-      {item.status !== "done" && item.status !== "error" && (
+      {item.status !== "done" && item.status !== "error" && item.status !== "cancelled" && (
         <div className="h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-300 ${BAR_COLORS[item.status]}`}

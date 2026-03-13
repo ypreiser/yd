@@ -13,6 +13,53 @@ use crate::config::load_config;
 
 const MAX_CONCURRENT: usize = 5;
 
+/// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
+fn decode_output(bytes: &[u8]) -> String {
+    // Try UTF-8 first (works if PYTHONUTF8=1 is effective)
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+
+    // Fall back to Windows system ANSI code page
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+
+        extern "system" {
+            fn MultiByteToWideChar(
+                code_page: u32,
+                flags: u32,
+                src: *const u8,
+                src_len: i32,
+                dst: *mut u16,
+                dst_len: i32,
+            ) -> i32;
+        }
+
+        const CP_ACP: u32 = 0; // system default ANSI code page
+
+        unsafe {
+            let wide_len = MultiByteToWideChar(
+                CP_ACP, 0,
+                bytes.as_ptr(), bytes.len() as i32,
+                std::ptr::null_mut(), 0,
+            );
+            if wide_len > 0 {
+                let mut wide = vec![0u16; wide_len as usize];
+                MultiByteToWideChar(
+                    CP_ACP, 0,
+                    bytes.as_ptr(), bytes.len() as i32,
+                    wide.as_mut_ptr(), wide_len,
+                );
+                return OsString::from_wide(&wide).to_string_lossy().to_string();
+            }
+        }
+    }
+
+    String::from_utf8_lossy(bytes).to_string()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
     pub id: String,
@@ -24,9 +71,11 @@ pub struct DownloadProgress {
 }
 
 type ChildMap = Arc<Mutex<HashMap<String, u32>>>;
+type CancelledSet = Arc<Mutex<std::collections::HashSet<String>>>;
 
 pub struct DownloadState {
     pub children: ChildMap,
+    pub cancelled: CancelledSet,
     pub semaphore: Arc<Semaphore>,
 }
 
@@ -34,16 +83,17 @@ impl DownloadState {
     pub fn new() -> Self {
         Self {
             children: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(Mutex::new(std::collections::HashSet::new())),
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT)),
         }
     }
 }
 
-fn ffmpeg_sidecar_path(app: &tauri::AppHandle) -> String {
-    let resolver = app.path();
-    let resource_dir = resolver.resource_dir().expect("no resource dir");
-    let ffmpeg_path = resource_dir.join("binaries").join("ffmpeg-x86_64-pc-windows-msvc.exe");
-    ffmpeg_path.to_string_lossy().to_string()
+fn ffmpeg_location() -> String {
+    // Tauri places all sidecar binaries next to the main exe (no triple suffix)
+    let exe = std::env::current_exe().expect("no exe path");
+    let exe_dir = exe.parent().expect("no parent dir");
+    exe_dir.to_string_lossy().to_string()
 }
 
 #[tauri::command]
@@ -56,7 +106,8 @@ pub async fn download(
     let state = app.state::<DownloadState>();
     let semaphore = state.semaphore.clone();
     let children = state.children.clone();
-    let ffmpeg_path = ffmpeg_sidecar_path(&app);
+    let cancelled = state.cancelled.clone();
+    let ffmpeg_path = ffmpeg_location();
 
     let id_clone = id.clone();
     let url_clone = url.clone();
@@ -95,6 +146,7 @@ pub async fn download(
             .shell()
             .sidecar("yt-dlp")
             .expect("yt-dlp sidecar not found")
+            .env("PYTHONUTF8", "1")
             .args([
                 "--extract-audio",
                 "--audio-format",
@@ -103,6 +155,7 @@ pub async fn download(
                 "--progress",
                 "--ffmpeg-location",
                 &ffmpeg_path,
+                "--print", "before_dl:YTDL_TITLE:%(title)s",
                 "-o",
                 &format!("{}/%(title)s.%(ext)s", config.download_dir),
                 &url_clone,
@@ -118,22 +171,25 @@ pub async fn download(
                 }
 
                 let progress_re = Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
-                let title_re = Regex::new(r"\[download\] Destination: .*/(.+)\.\w+$").unwrap();
-                let title_re2 = Regex::new(r"\[download\] Destination: (.+)\.\w+$").unwrap();
                 let mut title: Option<String> = None;
+                let mut last_stderr = String::new();
 
                 while let Some(event) = rx.recv().await {
                     match event {
-                        CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
-                            let line = String::from_utf8_lossy(&line_bytes);
+                        CommandEvent::Stderr(ref line_bytes) | CommandEvent::Stdout(ref line_bytes) => {
+                            let is_stderr = matches!(event, CommandEvent::Stderr(_));
+                            let line = decode_output(line_bytes);
                             let line = line.trim();
 
-                            // Try to extract title
+                            // Track last non-empty stderr line for error reporting
+                            if is_stderr && !line.is_empty() {
+                                last_stderr = line.to_string();
+                            }
+
+                            // Extract title from --print output
                             if title.is_none() {
-                                if let Some(caps) = title_re.captures(line) {
-                                    title = Some(caps[1].to_string());
-                                } else if let Some(caps) = title_re2.captures(line) {
-                                    title = Some(caps[1].to_string());
+                                if let Some(t) = line.strip_prefix("YTDL_TITLE:") {
+                                    title = Some(t.to_string());
                                 }
                             }
 
@@ -176,7 +232,19 @@ pub async fn download(
                             }
                         }
                         CommandEvent::Terminated(payload) => {
+                            let was_cancelled = cancelled.lock().await.remove(&id_clone);
                             let success = payload.code == Some(0);
+                            let (status, error) = if was_cancelled {
+                                ("cancelled".to_string(), None)
+                            } else if success {
+                                ("done".to_string(), None)
+                            } else {
+                                ("error".to_string(), Some(if last_stderr.is_empty() {
+                                    format!("yt-dlp exited with code {:?}", payload.code)
+                                } else {
+                                    last_stderr.clone()
+                                }))
+                            };
                             app.emit(
                                 "download-progress",
                                 DownloadProgress {
@@ -184,12 +252,8 @@ pub async fn download(
                                     url: url_clone.clone(),
                                     percent: if success { 100.0 } else { 0.0 },
                                     title: title.clone(),
-                                    status: if success { "done" } else { "error" }.to_string(),
-                                    error: if success {
-                                        None
-                                    } else {
-                                        Some(format!("yt-dlp exited with code {:?}", payload.code))
-                                    },
+                                    status,
+                                    error,
                                 },
                             )
                             .ok();
@@ -247,7 +311,7 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
     let children = state.children.clone();
     let map = children.lock().await;
     if let Some(pid) = map.get(&id) {
-        // Kill the process tree on Windows
+        state.cancelled.lock().await.insert(id);
         std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .spawn()

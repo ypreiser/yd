@@ -26,7 +26,7 @@
 - [x] `src-tauri/src/lib.rs` — Register all commands, wire up module structure
 - [x] Add `tokio`, `serde`, `serde_json`, `uuid` to Cargo dependencies
 - [x] Enable required Tauri permissions: `dialog:open`, `shell:sidecar`, events
-- [ ] Verify: manually test single download via frontend devtools `invoke("download", ...)`
+- [x] Verify: manually test single download via frontend devtools `invoke("download", ...)`
 
 ## Phase 3: Frontend Core
 
@@ -40,7 +40,7 @@
 - [x] `src/lib/tauri.ts` — Typed wrappers around `invoke` calls and event listeners
 - [x] Wire up progress events: listen to `download-progress` / `download-complete` / `download-error`, update state
 - [x] Style all components with Tailwind (clean, minimal dark theme)
-- [ ] Verify: end-to-end single song download with visible progress
+- [x] Verify: end-to-end single song download with visible progress
 
 ## Phase 4: Batch + Parallel
 
@@ -50,7 +50,7 @@
 - [x] `src-tauri/src/download.rs` — `download_batch` command: accept Vec<String>, spawn up to 5 concurrent yt-dlp processes via tokio semaphore, each emitting events with unique ID
 - [x] `src-tauri/src/download.rs` — `cancel_download` command: kill yt-dlp child process by ID
 - [x] Frontend: map batch URLs to individual DownloadItem components, each tracking its own progress
-- [ ] Verify: paste 7+ URLs, confirm max 5 run concurrently, remaining queued
+- [x] Verify: paste 7+ URLs, confirm max 5 run concurrently, remaining queued
 
 ## Phase 5: Polish
 
@@ -65,8 +65,8 @@
 
 ## Final Checklist
 
-- [ ] All commands work end-to-end (single, batch, cancel, config)
+- [x] All commands work end-to-end (single, batch, cancel, config)
 - [ ] No security issues (no shell injection — URLs passed as args, not interpolated)
-- [ ] Parallel limit of 5 enforced
-- [ ] Config persists across app restarts
+- [x] Parallel limit of 5 enforced
+- [x] Config persists across app restarts
 - [ ] README updated
