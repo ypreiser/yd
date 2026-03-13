@@ -10,18 +10,30 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const t = useT();
   const [text, setText] = useState("");
 
+  function extractUrls(input: string): string[] {
+    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]*v=[^\s&]+|shorts\/[^\s?]+|playlist\?[^\s]*list=[^\s&]+)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
+    const matches = input.match(ytRegex);
+    if (!matches) return [];
+    // dedupe while preserving order, strip tracking params
+    const seen = new Set<string>();
+    return matches.filter((url) => {
+      const clean = url.split("&si=")[0].split("?si=")[0];
+      if (seen.has(clean)) return false;
+      seen.add(clean);
+      return true;
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const urls = text
-      .split("\n")
-      .map((u) => u.trim())
-      .filter((u) => u.length > 0);
+    const urls = extractUrls(text);
     if (urls.length === 0) return;
     onSubmit(urls);
     setText("");
   }
 
-  const lineCount = text.split("\n").filter((l) => l.trim().length > 0).length;
+  const urls = extractUrls(text);
+  const lineCount = urls.length;
   const isBatch = lineCount > 1;
 
   return (
