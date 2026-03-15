@@ -198,6 +198,103 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistEntry {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+    pub thumbnail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistInfo {
+    pub title: String,
+    pub entries: Vec<PlaylistEntry>,
+}
+
+#[tauri::command]
+pub async fn fetch_playlist(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<PlaylistInfo, String> {
+    if !is_valid_youtube_url(&url) {
+        return Err("Invalid URL: only YouTube URLs are allowed".to_string());
+    }
+
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .env("PYTHONUTF8", "1")
+        .args([
+            "--flat-playlist",
+            "--no-download",
+            "--print", "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
+            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
+            &url,
+        ]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = decode_output(&output.stderr);
+        return Err(stderr);
+    }
+
+    let stdout = decode_output(&output.stdout);
+    let mut playlist_title = String::new();
+    let mut entries = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(title) = line.strip_prefix("YTDL_PLAYLIST_TITLE:") {
+            if playlist_title.is_empty() && title != "NA" {
+                playlist_title = title.to_string();
+            }
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(5, '\t').collect();
+        if parts.len() >= 2 {
+            let video_id = parts[0];
+            let title = parts[1].to_string();
+            let url = format!("https://www.youtube.com/watch?v={}", video_id);
+            let duration = if parts.len() > 3 && parts[3] != "NA" {
+                parts[3].to_string()
+            } else {
+                String::new()
+            };
+            let thumbnail = if parts.len() > 4 && parts[4] != "NA" {
+                parts[4].to_string()
+            } else {
+                format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", video_id)
+            };
+
+            entries.push(PlaylistEntry {
+                id: video_id.to_string(),
+                title,
+                url,
+                duration,
+                thumbnail,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("No entries found in playlist".to_string());
+    }
+
+    Ok(PlaylistInfo {
+        title: playlist_title,
+        entries,
+    })
+}
+
 fn is_valid_youtube_url(url: &str) -> bool {
     let url = url.trim();
     url.starts_with("https://www.youtube.com/")

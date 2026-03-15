@@ -50,6 +50,23 @@ export async function searchYoutube(query: string): Promise<SearchResult[]> {
   return invoke("search_youtube", { query });
 }
 
+export interface PlaylistEntry {
+  id: string;
+  title: string;
+  url: string;
+  duration: string;
+  thumbnail: string;
+}
+
+export interface PlaylistInfo {
+  title: string;
+  entries: PlaylistEntry[];
+}
+
+export async function fetchPlaylist(url: string): Promise<PlaylistInfo> {
+  return invoke("fetch_playlist", { url });
+}
+
 export function onDownloadProgress(
   callback: (progress: DownloadProgress) => void
 ): Promise<UnlistenFn> {

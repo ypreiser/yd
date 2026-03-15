@@ -35,6 +35,15 @@ export interface Translations {
   noResults: string;
   searchError: string;
   addToDownload: string;
+  // playlist
+  playlist: string;
+  playlistVideos: (n: number) => string;
+  selectAll: string;
+  deselectAll: string;
+  downloadSelected: (n: number) => string;
+  loadingPlaylist: string;
+  playlistError: string;
+  close: string;
   // update
   updateAvailable: string;
   updateDownloading: string;
@@ -74,6 +83,14 @@ const en: Translations = {
   noResults: "No results found",
   searchError: "Search failed",
   addToDownload: "Download",
+  playlist: "Playlist",
+  playlistVideos: (n) => `${n} videos`,
+  selectAll: "Select all",
+  deselectAll: "Deselect all",
+  downloadSelected: (n) => `Download ${n} selected`,
+  loadingPlaylist: "Loading playlist...",
+  playlistError: "Failed to load playlist",
+  close: "Close",
   updateAvailable: "Update available",
   updateDownloading: "Downloading update...",
   updateReady: "Update ready — restart to apply",
@@ -112,6 +129,14 @@ const he: Translations = {
   noResults: "לא נמצאו תוצאות",
   searchError: "החיפוש נכשל",
   addToDownload: "הורדה",
+  playlist: "רשימת השמעה",
+  playlistVideos: (n) => `${n} סרטונים`,
+  selectAll: "בחר הכל",
+  deselectAll: "בטל בחירה",
+  downloadSelected: (n) => `הורד ${n} נבחרים`,
+  loadingPlaylist: "טוען רשימת השמעה...",
+  playlistError: "טעינת הרשימה נכשלה",
+  close: "סגור",
   updateAvailable: "עדכון זמין",
   updateDownloading: "מוריד עדכון...",
   updateReady: "העדכון מוכן — הפעל מחדש להחלה",
