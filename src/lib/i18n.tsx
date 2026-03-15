@@ -28,6 +28,13 @@ export interface Translations {
   themeDark: string;
   themeLight: string;
   version: string;
+  // search
+  search: string;
+  searchPlaceholder: string;
+  searching: string;
+  noResults: string;
+  searchError: string;
+  addToDownload: string;
   // update
   updateAvailable: string;
   updateDownloading: string;
@@ -61,6 +68,12 @@ const en: Translations = {
   themeDark: "Dark",
   themeLight: "Light",
   version: "Version",
+  search: "Search",
+  searchPlaceholder: "Search YouTube...",
+  searching: "Searching...",
+  noResults: "No results found",
+  searchError: "Search failed",
+  addToDownload: "Download",
   updateAvailable: "Update available",
   updateDownloading: "Downloading update...",
   updateReady: "Update ready — restart to apply",
@@ -93,6 +106,12 @@ const he: Translations = {
   themeDark: "כהה",
   themeLight: "בהיר",
   version: "גרסה",
+  search: "חיפוש",
+  searchPlaceholder: "חיפוש ביוטיוב...",
+  searching: "מחפש...",
+  noResults: "לא נמצאו תוצאות",
+  searchError: "החיפוש נכשל",
+  addToDownload: "הורדה",
   updateAvailable: "עדכון זמין",
   updateDownloading: "מוריד עדכון...",
   updateReady: "העדכון מוכן — הפעל מחדש להחלה",

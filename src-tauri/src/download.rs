@@ -13,6 +13,83 @@ use crate::config::load_config;
 
 const MAX_CONCURRENT: usize = 5;
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchResult {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+    pub channel: String,
+    pub thumbnail: String,
+}
+
+#[tauri::command]
+pub async fn search_youtube(
+    app: tauri::AppHandle,
+    query: String,
+) -> Result<Vec<SearchResult>, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .env("PYTHONUTF8", "1")
+        .args([
+            "--flat-playlist",
+            "--no-download",
+            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
+            &format!("ytsearch10:{}", query),
+        ]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = decode_output(&output.stderr);
+        return Err(stderr);
+    }
+
+    let stdout = decode_output(&output.stdout);
+    let mut results = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(6, '\t').collect();
+        if parts.len() >= 2 {
+            let video_id = parts[0];
+            let title = parts[1].to_string();
+            let url = if parts.len() > 2 && !parts[2].is_empty() && parts[2] != "NA" {
+                parts[2].to_string()
+            } else {
+                format!("https://www.youtube.com/watch?v={}", video_id)
+            };
+            let duration = if parts.len() > 3 && parts[3] != "NA" {
+                parts[3].to_string()
+            } else {
+                String::new()
+            };
+            let channel = if parts.len() > 4 && parts[4] != "NA" {
+                parts[4].to_string()
+            } else {
+                String::new()
+            };
+            let thumbnail = if parts.len() > 5 && parts[5] != "NA" {
+                parts[5].to_string()
+            } else {
+                format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", video_id)
+            };
+
+            results.push(SearchResult {
+                id: video_id.to_string(),
+                title,
+                url,
+                duration,
+                channel,
+                thumbnail,
+            });
+        }
+    }
+
+    Ok(results)
+}
+
 /// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
 fn decode_output(bytes: &[u8]) -> String {
     // Try UTF-8 first (works if PYTHONUTF8=1 is effective)

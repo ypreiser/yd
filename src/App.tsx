@@ -3,6 +3,7 @@ import "./App.css";
 import UrlInput from "./components/UrlInput";
 import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
+import SearchBar from "./components/SearchBar";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
 import { downloadBatch, onDownloadProgress, getConfig } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
@@ -11,6 +12,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 type View = "main" | "settings";
+type InputMode = "url" | "search";
 type UpdateStatus = "idle" | "available" | "downloading" | "ready";
 
 function UpdateBanner() {
@@ -100,6 +102,7 @@ function Header({
 
 function App() {
   const [view, setView] = useState<View>("main");
+  const [inputMode, setInputMode] = useState<InputMode>("url");
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(
     new Map()
   );
@@ -172,7 +175,33 @@ function App() {
             />
           ) : (
             <>
-              <UrlInput onSubmit={handleSubmit} />
+              <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700 -mt-1 mb-1">
+                <button
+                  onClick={() => setInputMode("url")}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                    inputMode === "url"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  URL
+                </button>
+                <button
+                  onClick={() => setInputMode("search")}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                    inputMode === "search"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {t.search}
+                </button>
+              </div>
+              {inputMode === "url" ? (
+                <UrlInput onSubmit={handleSubmit} />
+              ) : (
+                <SearchBar onDownload={handleSubmit} />
+              )}
               <DownloadList items={items} />
             </>
           )}

@@ -37,6 +37,19 @@ export async function cancelDownload(id: string): Promise<void> {
   return invoke("cancel_download", { id });
 }
 
+export interface SearchResult {
+  id: string;
+  title: string;
+  url: string;
+  duration: string;
+  channel: string;
+  thumbnail: string;
+}
+
+export async function searchYoutube(query: string): Promise<SearchResult[]> {
+  return invoke("search_youtube", { query });
+}
+
 export function onDownloadProgress(
   callback: (progress: DownloadProgress) => void
 ): Promise<UnlistenFn> {
