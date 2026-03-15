@@ -36,6 +36,7 @@ pub async fn search_youtube(
         .args([
             "--flat-playlist",
             "--no-download",
+            "--add-header", "Cookie:PREF=f2=8000000",
             "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
             &format!("ytsearch10:{}", query),
         ]);
