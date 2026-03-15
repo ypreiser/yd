@@ -1,13 +1,18 @@
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
+
+static PROGRESS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
+
+const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
 
 use crate::config::load_config;
 
@@ -175,12 +180,51 @@ fn ffmpeg_location() -> String {
 }
 
 #[tauri::command]
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(unix)]
+    {
+        // Kill the process group (negative PID) to terminate child processes too
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGTERM);
+        }
+    }
+    Ok(())
+}
+
+fn is_valid_youtube_url(url: &str) -> bool {
+    let url = url.trim();
+    url.starts_with("https://www.youtube.com/")
+        || url.starts_with("http://www.youtube.com/")
+        || url.starts_with("https://youtube.com/")
+        || url.starts_with("http://youtube.com/")
+        || url.starts_with("https://youtu.be/")
+        || url.starts_with("http://youtu.be/")
+        || url.starts_with("https://music.youtube.com/")
+        || url.starts_with("http://music.youtube.com/")
+}
+
+#[tauri::command]
 pub async fn download(
     app: tauri::AppHandle,
     url: String,
 ) -> Result<String, String> {
+    if !is_valid_youtube_url(&url) {
+        return Err("Invalid URL: only YouTube URLs are allowed".to_string());
+    }
+
     let id = Uuid::new_v4().to_string();
     let config = load_config(&app);
+
+    if !ALLOWED_AUDIO_FORMATS.contains(&config.audio_format.as_str()) {
+        return Err(format!("Invalid audio format: {}", config.audio_format));
+    }
     let state = app.state::<DownloadState>();
     let semaphore = state.semaphore.clone();
     let children = state.children.clone();
@@ -248,7 +292,6 @@ pub async fn download(
                     map.insert(id_clone.clone(), child.pid());
                 }
 
-                let progress_re = Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
                 let mut title: Option<String> = None;
                 let mut last_stderr = String::new();
 
@@ -272,7 +315,7 @@ pub async fn download(
                             }
 
                             // Extract progress percentage
-                            if let Some(caps) = progress_re.captures(line) {
+                            if let Some(caps) = PROGRESS_RE.captures(line) {
                                 if let Ok(pct) = caps[1].parse::<f64>() {
                                     let status = if line.contains("[ExtractAudio]") || line.contains("Post-process") {
                                         "converting"
@@ -390,10 +433,7 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
     let map = children.lock().await;
     if let Some(pid) = map.get(&id) {
         state.cancelled.lock().await.insert(id);
-        std::process::Command::new("taskkill")
-            .args(["/F", "/T", "/PID", &pid.to_string()])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        kill_process_tree(*pid)?;
         Ok(())
     } else {
         Err("download not found or already finished".to_string())

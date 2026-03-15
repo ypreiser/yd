@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useT } from "../lib/i18n";
 
 interface UrlInputProps {
@@ -32,7 +32,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
     setText("");
   }
 
-  const urls = extractUrls(text);
+  const urls = useMemo(() => extractUrls(text), [text]);
   const lineCount = urls.length;
   const isBatch = lineCount > 1;
 

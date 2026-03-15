@@ -138,6 +138,18 @@ function App() {
       setDownloads((prev) => {
         const next = new Map(prev);
         next.set(progress.id, progress);
+
+        // Remove finished entries beyond a limit to prevent unbounded growth
+        const MAX_FINISHED = 50;
+        const finished = Array.from(next.entries()).filter(
+          ([, p]) => p.status === "done" || p.status === "error" || p.status === "cancelled"
+        );
+        if (finished.length > MAX_FINISHED) {
+          for (const [id] of finished.slice(0, finished.length - MAX_FINISHED)) {
+            next.delete(id);
+          }
+        }
+
         return next;
       });
     });
