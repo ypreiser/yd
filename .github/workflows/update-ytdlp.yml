@@ -26,6 +26,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Read current version
         id: current
         shell: bash
@@ -71,16 +75,17 @@ jobs:
         id: smoke
         shell: bash
         run: |
+          YTDLP="./src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe"
+
           # Verify binary runs and returns expected version
-          VERSION=$(./src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe --version)
+          VERSION=$($YTDLP --version)
           echo "Reported version: $VERSION"
           echo "binary_version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Test metadata extraction on a short Creative Commons video
-          ./src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
-            --no-download \
-            --print "%(title)s" \
-            "https://www.youtube.com/watch?v=BaW_jenozKc" || exit 1
+          # Test YouTube search + metadata extraction (no specific video ID that could be removed)
+          TITLE=$($YTDLP --js-runtimes nodejs --no-download --print "%(title)s" "ytsearch1:test video")
+          echo "Search result: $TITLE"
+          [ -n "$TITLE" ] || exit 1
 
           echo "Smoke test passed"
 
