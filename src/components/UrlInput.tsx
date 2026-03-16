@@ -21,7 +21,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   function extractUrls(input: string): string[] {
-    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]*v=[^\s&]+|shorts\/[^\s?]+|playlist\?[^\s]*list=[^\s&]+)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
+    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
     const matches = input.match(ytRegex);
     if (!matches) return [];
     const seen = new Set<string>();
