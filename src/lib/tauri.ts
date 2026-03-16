@@ -6,6 +6,8 @@ export interface AppConfig {
   audio_format: string;
   theme: "dark" | "light";
   language: "en" | "he";
+  auto_update: boolean;
+  previous_version: string | null;
 }
 
 export interface DownloadProgress {
@@ -65,6 +67,10 @@ export interface PlaylistInfo {
 
 export async function fetchPlaylist(url: string): Promise<PlaylistInfo> {
   return invoke("fetch_playlist", { url });
+}
+
+export async function getYtdlpVersion(): Promise<string> {
+  return invoke("get_ytdlp_version");
 }
 
 export function onDownloadProgress(

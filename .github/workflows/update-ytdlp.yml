@@ -1,0 +1,175 @@
+name: Update yt-dlp
+
+on:
+  schedule:
+    - cron: "0 12 * * *" # daily at noon UTC
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        default: "update"
+        type: choice
+        options:
+          - update
+          - rollback
+
+jobs:
+  update-ytdlp:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read current version
+        id: current
+        shell: bash
+        run: |
+          CURRENT=$(cat yt-dlp-version.txt | tr -d '[:space:]')
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          if [ -f yt-dlp-version-prev.txt ]; then
+            PREV=$(cat yt-dlp-version-prev.txt | tr -d '[:space:]')
+            echo "prev=$PREV" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get latest yt-dlp release
+        if: inputs.action != 'rollback'
+        id: latest
+        shell: bash
+        run: |
+          LATEST=$(gh release view --repo yt-dlp/yt-dlp --json tagName -q .tagName)
+          echo "version=$LATEST" >> $GITHUB_OUTPUT
+          if [ "$LATEST" = "${{ steps.current.outputs.version }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- UPDATE MODE ---
+      - name: Download new yt-dlp binary
+        if: inputs.action != 'rollback' && steps.latest.outputs.skip == 'false'
+        shell: bash
+        run: |
+          gh release download "${{ steps.latest.outputs.version }}" \
+            --repo yt-dlp/yt-dlp \
+            --pattern "yt-dlp.exe" \
+            --dir src-tauri/binaries/ \
+            --clobber
+          mv src-tauri/binaries/yt-dlp.exe src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke test yt-dlp
+        if: inputs.action != 'rollback' && steps.latest.outputs.skip == 'false'
+        id: smoke
+        shell: bash
+        run: |
+          # Verify binary runs and returns expected version
+          VERSION=$(./src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe --version)
+          echo "Reported version: $VERSION"
+          echo "binary_version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Test metadata extraction on a short Creative Commons video
+          ./src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
+            --no-download \
+            --print "%(title)s" \
+            "https://www.youtube.com/watch?v=BaW_jenozKc" || exit 1
+
+          echo "Smoke test passed"
+
+      - name: Update version files (update mode)
+        if: inputs.action != 'rollback' && steps.latest.outputs.skip == 'false' && steps.smoke.outcome == 'success'
+        shell: bash
+        run: |
+          # Save previous version for rollback
+          cp yt-dlp-version.txt yt-dlp-version-prev.txt
+          echo "${{ steps.latest.outputs.version }}" > yt-dlp-version.txt
+
+      # --- ROLLBACK MODE ---
+      - name: Download previous yt-dlp binary
+        if: inputs.action == 'rollback'
+        shell: bash
+        run: |
+          PREV="${{ steps.current.outputs.prev }}"
+          if [ -z "$PREV" ]; then
+            echo "No previous version found in yt-dlp-version-prev.txt"
+            exit 1
+          fi
+          gh release download "$PREV" \
+            --repo yt-dlp/yt-dlp \
+            --pattern "yt-dlp.exe" \
+            --dir src-tauri/binaries/ \
+            --clobber
+          mv src-tauri/binaries/yt-dlp.exe src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version files (rollback mode)
+        if: inputs.action == 'rollback'
+        shell: bash
+        run: |
+          PREV="${{ steps.current.outputs.prev }}"
+          echo "$PREV" > yt-dlp-version.txt
+
+      # --- BUMP + RELEASE (both modes) ---
+      - name: Bump patch version and tag
+        if: (inputs.action != 'rollback' && steps.latest.outputs.skip == 'false' && steps.smoke.outcome == 'success') || inputs.action == 'rollback'
+        id: bump
+        shell: bash
+        run: |
+          # Read current app version from tauri.conf.json
+          APP_VERSION=$(grep -oP '"version":\s*"\K[^"]+' src-tauri/tauri.conf.json | head -1)
+          MAJOR=$(echo "$APP_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$APP_VERSION" | cut -d. -f2)
+          # Strip any existing prerelease suffix from patch
+          PATCH=$(echo "$APP_VERSION" | cut -d. -f3 | cut -d- -f1)
+          NEW_PATCH=$((PATCH + 1))
+
+          # Determine yt-dlp version for tag suffix
+          YTDLP_VER=$(cat yt-dlp-version.txt | tr -d '[:space:]')
+          YTDLP_SUFFIX=$(echo "$YTDLP_VER" | tr '.' '.')
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}-y.${YTDLP_SUFFIX}"
+          TAG="v${NEW_VERSION}"
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Update version in tauri.conf.json
+          sed -i "s/\"version\": \"$APP_VERSION\"/\"version\": \"$NEW_VERSION\"/" src-tauri/tauri.conf.json
+
+          # Update version in package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" package.json
+
+          # Update version in Cargo.toml
+          sed -i "s/^version = \"[^\"]*\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
+
+      - name: Commit and tag
+        if: steps.bump.outcome == 'success'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Update yt-dlp to $(cat yt-dlp-version.txt | tr -d '[:space:]')"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin main --tags
+
+      # --- FAILURE HANDLING ---
+      - name: Open issue on smoke test failure
+        if: inputs.action != 'rollback' && steps.latest.outputs.skip == 'false' && steps.smoke.outcome == 'failure'
+        shell: bash
+        run: |
+          gh issue create \
+            --title "yt-dlp ${{ steps.latest.outputs.version }} smoke test failed" \
+            --body "The automated yt-dlp update to version \`${{ steps.latest.outputs.version }}\` failed smoke testing. Manual investigation required." \
+            --label "bug"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

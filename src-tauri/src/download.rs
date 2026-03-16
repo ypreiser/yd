@@ -214,6 +214,24 @@ pub struct PlaylistInfo {
 }
 
 #[tauri::command]
+pub async fn get_ytdlp_version(app: tauri::AppHandle) -> Result<String, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .args(["--version"]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err("Failed to get yt-dlp version".to_string());
+    }
+
+    let version = decode_output(&output.stdout).trim().to_string();
+    Ok(version)
+}
+
+#[tauri::command]
 pub async fn fetch_playlist(
     app: tauri::AppHandle,
     url: String,
