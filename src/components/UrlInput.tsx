@@ -19,6 +19,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const [playlistData, setPlaylistData] = useState<PlaylistInfo | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [pendingPlaylists, setPendingPlaylists] = useState<string[]>([]);
 
   function extractUrls(input: string): string[] {
     const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
@@ -38,9 +39,17 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
     const urls = extractUrls(text);
     if (urls.length === 0) return;
 
-    // If exactly one URL and it's a playlist, fetch playlist info
+    const nonPlaylistUrls = urls.filter((u) => !isPlaylistUrl(u));
     const playlistUrls = urls.filter(isPlaylistUrl);
-    if (playlistUrls.length === 1 && urls.length === 1) {
+
+    // Download non-playlist URLs immediately
+    if (nonPlaylistUrls.length > 0) {
+      onSubmit(nonPlaylistUrls);
+    }
+
+    // Fetch first playlist and show modal (one at a time)
+    if (playlistUrls.length > 0) {
+      setPendingPlaylists(playlistUrls.slice(1));
       setPlaylistLoading(true);
       setPlaylistError(null);
       try {
@@ -51,16 +60,33 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
       } finally {
         setPlaylistLoading(false);
       }
-      return;
     }
 
-    onSubmit(urls);
     setText("");
+  }
+
+  async function handlePlaylistClose() {
+    setPlaylistData(null);
+    // Show next pending playlist if any
+    if (pendingPlaylists.length > 0) {
+      const next = pendingPlaylists[0];
+      setPendingPlaylists(pendingPlaylists.slice(1));
+      setPlaylistLoading(true);
+      setPlaylistError(null);
+      try {
+        const info = await fetchPlaylist(next);
+        setPlaylistData(info);
+      } catch {
+        setPlaylistError(t.playlistError);
+      } finally {
+        setPlaylistLoading(false);
+      }
+    }
   }
 
   function handlePlaylistDownload(urls: string[]) {
     onSubmit(urls);
-    setText("");
+    handlePlaylistClose();
   }
 
   const urls = useMemo(() => extractUrls(text), [text]);
@@ -101,7 +127,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
         <PlaylistModal
           playlist={playlistData}
           onDownload={handlePlaylistDownload}
-          onClose={() => setPlaylistData(null)}
+          onClose={handlePlaylistClose}
         />
       )}
     </>
