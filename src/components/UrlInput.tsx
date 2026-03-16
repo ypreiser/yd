@@ -10,7 +10,8 @@ interface UrlInputProps {
 }
 
 function isPlaylistUrl(url: string): boolean {
-  return /[?&]list=/.test(url) || /\/playlist\?/.test(url);
+  return /[?&]list=/.test(url) || /\/playlist\?/.test(url)
+    || /\/(channel|c|@)[/\w]/.test(url);
 }
 
 export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
@@ -22,7 +23,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const [pendingPlaylists, setPendingPlaylists] = useState<string[]>([]);
 
   function extractUrls(input: string): string[] {
-    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
+    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+|(?:channel|c)\/[^\s?]+|@[^\s?/]+(?:\/[^\s?]*)?)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
     const matches = input.match(ytRegex);
     if (!matches) return [];
     const seen = new Set<string>();
