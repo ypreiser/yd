@@ -10,6 +10,8 @@ pub struct AppConfig {
     pub audio_format: String,
     pub theme: String,
     pub language: String,
+    pub auto_update: bool,
+    pub previous_version: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -23,6 +25,8 @@ impl Default for AppConfig {
             audio_format: "m4a".to_string(),
             theme: "dark".to_string(),
             language: "he".to_string(),
+            auto_update: false,
+            previous_version: None,
         }
     }
 }

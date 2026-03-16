@@ -28,6 +28,22 @@ export interface Translations {
   themeDark: string;
   themeLight: string;
   version: string;
+  // search
+  search: string;
+  searchPlaceholder: string;
+  searching: string;
+  noResults: string;
+  searchError: string;
+  addToDownload: string;
+  // playlist
+  playlist: string;
+  playlistVideos: (n: number) => string;
+  selectAll: string;
+  deselectAll: string;
+  downloadSelected: (n: number) => string;
+  loadingPlaylist: string;
+  playlistError: string;
+  close: string;
   // update
   updateAvailable: string;
   updateDownloading: string;
@@ -35,6 +51,18 @@ export interface Translations {
   updateNow: string;
   checkForUpdates: string;
   upToDate: string;
+  // yt-dlp
+  ytdlpVersion: string;
+  // auto-update
+  autoUpdate: string;
+  autoUpdateOn: string;
+  autoUpdateOff: string;
+  enableAutoUpdate: string;
+  autoUpdating: string;
+  // rollback
+  rollback: (version: string) => string;
+  rollbackConfirm: (version: string) => string;
+  rollingBack: string;
 }
 
 const en: Translations = {
@@ -61,12 +89,35 @@ const en: Translations = {
   themeDark: "Dark",
   themeLight: "Light",
   version: "Version",
+  search: "Search",
+  searchPlaceholder: "Search YouTube...",
+  searching: "Searching...",
+  noResults: "No results found",
+  searchError: "Search failed",
+  addToDownload: "Download",
+  playlist: "Playlist",
+  playlistVideos: (n) => `${n} videos`,
+  selectAll: "Select all",
+  deselectAll: "Deselect all",
+  downloadSelected: (n) => `Download ${n} selected`,
+  loadingPlaylist: "Loading playlist...",
+  playlistError: "Failed to load playlist",
+  close: "Close",
   updateAvailable: "Update available",
   updateDownloading: "Downloading update...",
   updateReady: "Update ready — restart to apply",
   updateNow: "Restart",
   checkForUpdates: "Check for updates",
   upToDate: "Up to date",
+  ytdlpVersion: "yt-dlp Version",
+  autoUpdate: "Auto Update",
+  autoUpdateOn: "On",
+  autoUpdateOff: "Off",
+  enableAutoUpdate: "Enable auto-update in Settings",
+  autoUpdating: "Updating...",
+  rollback: (v) => `Rollback to v${v}`,
+  rollbackConfirm: (v) => `Rollback to v${v}? The app will restart.`,
+  rollingBack: "Rolling back...",
 };
 
 const he: Translations = {
@@ -93,12 +144,35 @@ const he: Translations = {
   themeDark: "כהה",
   themeLight: "בהיר",
   version: "גרסה",
+  search: "חיפוש",
+  searchPlaceholder: "חיפוש ביוטיוב...",
+  searching: "מחפש...",
+  noResults: "לא נמצאו תוצאות",
+  searchError: "החיפוש נכשל",
+  addToDownload: "הורדה",
+  playlist: "רשימת השמעה",
+  playlistVideos: (n) => `${n} סרטונים`,
+  selectAll: "בחר הכל",
+  deselectAll: "בטל בחירה",
+  downloadSelected: (n) => `הורד ${n} נבחרים`,
+  loadingPlaylist: "טוען רשימת השמעה...",
+  playlistError: "טעינת הרשימה נכשלה",
+  close: "סגור",
   updateAvailable: "עדכון זמין",
   updateDownloading: "מוריד עדכון...",
   updateReady: "העדכון מוכן — הפעל מחדש להחלה",
   updateNow: "הפעל מחדש",
   checkForUpdates: "בדוק עדכונים",
   upToDate: "מעודכן",
+  ytdlpVersion: "גרסת yt-dlp",
+  autoUpdate: "עדכון אוטומטי",
+  autoUpdateOn: "פעיל",
+  autoUpdateOff: "כבוי",
+  enableAutoUpdate: "הפעל עדכון אוטומטי בהגדרות",
+  autoUpdating: "מעדכן...",
+  rollback: (v) => `חזור לגרסה ${v}`,
+  rollbackConfirm: (v) => `לחזור לגרסה ${v}? האפליקציה תופעל מחדש.`,
+  rollingBack: "חוזר לגרסה קודמת...",
 };
 
 const locales: Record<Language, Translations> = { en, he };

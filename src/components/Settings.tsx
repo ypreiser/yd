@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AppConfig } from "../lib/tauri";
-import { getConfig, setConfig } from "../lib/tauri";
+import { getConfig, setConfig, getYtdlpVersion } from "../lib/tauri";
 import { useT } from "../lib/i18n";
 import { getVersion } from "@tauri-apps/api/app";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 interface SettingsProps {
   onClose: () => void;
@@ -17,10 +19,13 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [appVersion, setAppVersion] = useState("");
+  const [ytdlpVer, setYtdlpVer] = useState("");
+  const [rollingBack, setRollingBack] = useState(false);
 
   useEffect(() => {
     getConfig().then(setLocalConfig);
     getVersion().then(setAppVersion);
+    getYtdlpVersion().then(setYtdlpVer).catch(() => {});
   }, []);
 
   async function handlePickDir() {
@@ -138,12 +143,59 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
         </div>
       </div>
 
-      {/* Version */}
-      {appVersion && (
-        <div className="text-xs text-zinc-400 dark:text-zinc-500">
-          {t.version} {appVersion}
+      {/* Auto Update */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {t.autoUpdate}
+        </label>
+        <div className="flex gap-2">
+          {([false, true] as const).map((val) => (
+            <button
+              key={String(val)}
+              onClick={() => setLocalConfig({ ...config, auto_update: val })}
+              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                config.auto_update === val
+                  ? "border-indigo-500 bg-indigo-600 text-white"
+                  : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {val ? t.autoUpdateOn : t.autoUpdateOff}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Rollback */}
+      {config.previous_version && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            onClick={async () => {
+              if (!confirm(t.rollbackConfirm(config.previous_version!))) return;
+              setRollingBack(true);
+              try {
+                const update = await check();
+                if (update) {
+                  await update.downloadAndInstall();
+                  await setConfig({ ...config, previous_version: null });
+                  await relaunch();
+                }
+              } catch {
+                setRollingBack(false);
+              }
+            }}
+            disabled={rollingBack}
+            className="rounded-lg border border-amber-500 px-3 py-2 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40 transition-colors"
+          >
+            {rollingBack ? t.rollingBack : t.rollback(config.previous_version)}
+          </button>
         </div>
       )}
+
+      {/* Version */}
+      <div className="flex flex-col gap-1 text-xs text-zinc-400 dark:text-zinc-500">
+        {appVersion && <span>{t.version} {appVersion}</span>}
+        {ytdlpVer && <span>{t.ytdlpVersion} {ytdlpVer}</span>}
+      </div>
 
       {/* Actions */}
       <div className="flex gap-2 justify-end pt-2">

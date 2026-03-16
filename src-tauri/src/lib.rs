@@ -23,6 +23,9 @@ pub fn run() {
             download::download,
             download::download_batch,
             download::cancel_download,
+            download::search_youtube,
+            download::fetch_playlist,
+            download::get_ytdlp_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

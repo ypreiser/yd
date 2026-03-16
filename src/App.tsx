@@ -3,36 +3,58 @@ import "./App.css";
 import UrlInput from "./components/UrlInput";
 import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
+import SearchBar from "./components/SearchBar";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
-import { downloadBatch, onDownloadProgress, getConfig } from "./lib/tauri";
+import { downloadBatch, onDownloadProgress, getConfig, setConfig } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 
 type View = "main" | "settings";
+type InputMode = "url" | "search";
+
 type UpdateStatus = "idle" | "available" | "downloading" | "ready";
 
 function UpdateBanner() {
   const t = useT();
   const [status, setStatus] = useState<UpdateStatus>("idle");
-  const [version, setVersion] = useState<string>("");
+  const [version, setVersion] = useState("");
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    check()
-      .then((update) => {
-        if (update) {
-          setVersion(update.version);
-          setStatus("available");
+    (async () => {
+      try {
+        const update = await check();
+        if (!update) return;
+
+        const config = await getConfig();
+        if (config.auto_update) {
+          // Save current version as rollback target, then auto-install
+          const currentVersion = await getVersion();
+          await setConfig({ ...config, previous_version: currentVersion });
+          setStatus("downloading");
+          await update.downloadAndInstall();
+          setStatus("ready");
+          return;
         }
-      })
-      .catch(() => {});
+
+        setVersion(update.version);
+        setStatus("available");
+      } catch {
+        // ignore update check failure
+      }
+    })();
   }, []);
 
   async function handleUpdate() {
     if (status !== "available") return;
     setStatus("downloading");
     try {
+      const config = await getConfig();
+      const currentVersion = await getVersion();
+      await setConfig({ ...config, previous_version: currentVersion });
       const update = await check();
       if (update) {
         await update.downloadAndInstall();
@@ -43,7 +65,7 @@ function UpdateBanner() {
     }
   }
 
-  if (status === "idle") return null;
+  if (status === "idle" || dismissed) return null;
 
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-indigo-600 text-white text-sm">
@@ -51,23 +73,36 @@ function UpdateBanner() {
         {status === "available" && `${t.updateAvailable}: v${version}`}
         {status === "downloading" && t.updateDownloading}
         {status === "ready" && t.updateReady}
+        {status === "available" && (
+          <span className="opacity-75 ms-2">({t.enableAutoUpdate})</span>
+        )}
       </span>
-      {status === "available" && (
-        <button
-          onClick={handleUpdate}
-          className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
-        >
-          {t.updateNow}
-        </button>
-      )}
-      {status === "ready" && (
-        <button
-          onClick={() => relaunch()}
-          className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
-        >
-          {t.updateNow}
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {status === "available" && (
+          <button
+            onClick={handleUpdate}
+            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+          >
+            {t.updateNow}
+          </button>
+        )}
+        {status === "ready" && (
+          <button
+            onClick={() => relaunch()}
+            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+          >
+            {t.updateNow}
+          </button>
+        )}
+        {status !== "downloading" && (
+          <button
+            onClick={() => setDismissed(true)}
+            className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+          >
+            ✕
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -100,6 +135,7 @@ function Header({
 
 function App() {
   const [view, setView] = useState<View>("main");
+  const [inputMode, setInputMode] = useState<InputMode>("url");
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(
     new Map()
   );
@@ -135,6 +171,18 @@ function App() {
       setDownloads((prev) => {
         const next = new Map(prev);
         next.set(progress.id, progress);
+
+        // Remove finished entries beyond a limit to prevent unbounded growth
+        const MAX_FINISHED = 50;
+        const finished = Array.from(next.entries()).filter(
+          ([, p]) => p.status === "done" || p.status === "error" || p.status === "cancelled"
+        );
+        if (finished.length > MAX_FINISHED) {
+          for (const [id] of finished.slice(0, finished.length - MAX_FINISHED)) {
+            next.delete(id);
+          }
+        }
+
         return next;
       });
     });
@@ -172,7 +220,33 @@ function App() {
             />
           ) : (
             <>
-              <UrlInput onSubmit={handleSubmit} />
+              <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700 -mt-1 mb-1">
+                <button
+                  onClick={() => setInputMode("url")}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                    inputMode === "url"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  URL
+                </button>
+                <button
+                  onClick={() => setInputMode("search")}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                    inputMode === "search"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {t.search}
+                </button>
+              </div>
+              {inputMode === "url" ? (
+                <UrlInput onSubmit={handleSubmit} />
+              ) : (
+                <SearchBar onDownload={handleSubmit} />
+              )}
               <DownloadList items={items} />
             </>
           )}

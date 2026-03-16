@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
@@ -9,9 +9,92 @@ use tauri_plugin_shell::ShellExt;
 use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
 
+static PROGRESS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
+
+const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
+
 use crate::config::load_config;
 
 const MAX_CONCURRENT: usize = 5;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchResult {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+    pub channel: String,
+    pub thumbnail: String,
+}
+
+#[tauri::command]
+pub async fn search_youtube(
+    app: tauri::AppHandle,
+    query: String,
+) -> Result<Vec<SearchResult>, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .env("PYTHONUTF8", "1")
+        .args([
+            "--flat-playlist",
+            "--no-download",
+            "--add-header", "Cookie:PREF=f2=8000000",
+            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
+            &format!("ytsearch10:{}", query),
+        ]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = decode_output(&output.stderr);
+        return Err(stderr);
+    }
+
+    let stdout = decode_output(&output.stdout);
+    let mut results = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(6, '\t').collect();
+        if parts.len() >= 2 {
+            let video_id = parts[0];
+            let title = parts[1].to_string();
+            let url = if parts.len() > 2 && !parts[2].is_empty() && parts[2] != "NA" {
+                parts[2].to_string()
+            } else {
+                format!("https://www.youtube.com/watch?v={}", video_id)
+            };
+            let duration = if parts.len() > 3 && parts[3] != "NA" {
+                parts[3].to_string()
+            } else {
+                String::new()
+            };
+            let channel = if parts.len() > 4 && parts[4] != "NA" {
+                parts[4].to_string()
+            } else {
+                String::new()
+            };
+            let thumbnail = if parts.len() > 5 && parts[5] != "NA" {
+                parts[5].to_string()
+            } else {
+                format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", video_id)
+            };
+
+            results.push(SearchResult {
+                id: video_id.to_string(),
+                title,
+                url,
+                duration,
+                channel,
+                thumbnail,
+            });
+        }
+    }
+
+    Ok(results)
+}
 
 /// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
 fn decode_output(bytes: &[u8]) -> String {
@@ -97,12 +180,166 @@ fn ffmpeg_location() -> String {
 }
 
 #[tauri::command]
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(unix)]
+    {
+        // Kill the process group (negative PID) to terminate child processes too
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGTERM);
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistEntry {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+    pub thumbnail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistInfo {
+    pub title: String,
+    pub entries: Vec<PlaylistEntry>,
+}
+
+#[tauri::command]
+pub async fn get_ytdlp_version(app: tauri::AppHandle) -> Result<String, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .args(["--version"]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err("Failed to get yt-dlp version".to_string());
+    }
+
+    let version = decode_output(&output.stdout).trim().to_string();
+    Ok(version)
+}
+
+#[tauri::command]
+pub async fn fetch_playlist(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<PlaylistInfo, String> {
+    if !is_valid_youtube_url(&url) {
+        return Err("Invalid URL: only YouTube URLs are allowed".to_string());
+    }
+
+    let sidecar = app
+        .shell()
+        .sidecar("yt-dlp")
+        .expect("yt-dlp sidecar not found")
+        .env("PYTHONUTF8", "1")
+        .args([
+            "--flat-playlist",
+            "--no-download",
+            "--print", "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
+            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
+            &url,
+        ]);
+
+    let output = sidecar.output().await.map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = decode_output(&output.stderr);
+        return Err(stderr);
+    }
+
+    let stdout = decode_output(&output.stdout);
+    let mut playlist_title = String::new();
+    let mut entries = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(title) = line.strip_prefix("YTDL_PLAYLIST_TITLE:") {
+            if playlist_title.is_empty() && title != "NA" {
+                playlist_title = title.to_string();
+            }
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(5, '\t').collect();
+        if parts.len() >= 2 {
+            let video_id = parts[0];
+            let title = parts[1].to_string();
+            let url = format!("https://www.youtube.com/watch?v={}", video_id);
+            let duration = if parts.len() > 3 && parts[3] != "NA" {
+                parts[3].to_string()
+            } else {
+                String::new()
+            };
+            let thumbnail = if parts.len() > 4 && parts[4] != "NA" {
+                parts[4].to_string()
+            } else {
+                format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", video_id)
+            };
+
+            entries.push(PlaylistEntry {
+                id: video_id.to_string(),
+                title,
+                url,
+                duration,
+                thumbnail,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return Err("No entries found in playlist".to_string());
+    }
+
+    Ok(PlaylistInfo {
+        title: playlist_title,
+        entries,
+    })
+}
+
+fn is_valid_youtube_url(url: &str) -> bool {
+    let url = url.trim();
+    url.starts_with("https://www.youtube.com/")
+        || url.starts_with("http://www.youtube.com/")
+        || url.starts_with("https://youtube.com/")
+        || url.starts_with("http://youtube.com/")
+        || url.starts_with("https://youtu.be/")
+        || url.starts_with("http://youtu.be/")
+        || url.starts_with("https://music.youtube.com/")
+        || url.starts_with("http://music.youtube.com/")
+}
+
+#[tauri::command]
 pub async fn download(
     app: tauri::AppHandle,
     url: String,
 ) -> Result<String, String> {
+    if !is_valid_youtube_url(&url) {
+        return Err("Invalid URL: only YouTube URLs are allowed".to_string());
+    }
+
     let id = Uuid::new_v4().to_string();
     let config = load_config(&app);
+
+    if !ALLOWED_AUDIO_FORMATS.contains(&config.audio_format.as_str()) {
+        return Err(format!("Invalid audio format: {}", config.audio_format));
+    }
     let state = app.state::<DownloadState>();
     let semaphore = state.semaphore.clone();
     let children = state.children.clone();
@@ -170,7 +407,6 @@ pub async fn download(
                     map.insert(id_clone.clone(), child.pid());
                 }
 
-                let progress_re = Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
                 let mut title: Option<String> = None;
                 let mut last_stderr = String::new();
 
@@ -194,7 +430,7 @@ pub async fn download(
                             }
 
                             // Extract progress percentage
-                            if let Some(caps) = progress_re.captures(line) {
+                            if let Some(caps) = PROGRESS_RE.captures(line) {
                                 if let Ok(pct) = caps[1].parse::<f64>() {
                                     let status = if line.contains("[ExtractAudio]") || line.contains("Post-process") {
                                         "converting"
@@ -312,10 +548,7 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
     let map = children.lock().await;
     if let Some(pid) = map.get(&id) {
         state.cancelled.lock().await.insert(id);
-        std::process::Command::new("taskkill")
-            .args(["/F", "/T", "/PID", &pid.to_string()])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        kill_process_tree(*pid)?;
         Ok(())
     } else {
         Err("download not found or already finished".to_string())

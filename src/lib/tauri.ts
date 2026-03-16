@@ -6,6 +6,8 @@ export interface AppConfig {
   audio_format: string;
   theme: "dark" | "light";
   language: "en" | "he";
+  auto_update: boolean;
+  previous_version: string | null;
 }
 
 export interface DownloadProgress {
@@ -35,6 +37,40 @@ export async function downloadBatch(urls: string[]): Promise<string[]> {
 
 export async function cancelDownload(id: string): Promise<void> {
   return invoke("cancel_download", { id });
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  url: string;
+  duration: string;
+  channel: string;
+  thumbnail: string;
+}
+
+export async function searchYoutube(query: string): Promise<SearchResult[]> {
+  return invoke("search_youtube", { query });
+}
+
+export interface PlaylistEntry {
+  id: string;
+  title: string;
+  url: string;
+  duration: string;
+  thumbnail: string;
+}
+
+export interface PlaylistInfo {
+  title: string;
+  entries: PlaylistEntry[];
+}
+
+export async function fetchPlaylist(url: string): Promise<PlaylistInfo> {
+  return invoke("fetch_playlist", { url });
+}
+
+export async function getYtdlpVersion(): Promise<string> {
+  return invoke("get_ytdlp_version");
 }
 
 export function onDownloadProgress(

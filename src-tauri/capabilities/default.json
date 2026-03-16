@@ -17,8 +17,16 @@
         }
       ]
     },
-    "shell:allow-spawn",
-    "shell:allow-stdin-write",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "args": true,
+          "name": "binaries/yt-dlp",
+          "sidecar": true
+        }
+      ]
+    },
     "updater:default",
     "process:allow-restart"
   ]
