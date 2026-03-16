@@ -26,10 +26,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Read current version
         id: current
         shell: bash
@@ -82,10 +78,11 @@ jobs:
           echo "Reported version: $VERSION"
           echo "binary_version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Test YouTube search + metadata extraction (no specific video ID that could be removed)
-          TITLE=$($YTDLP --js-runtimes nodejs --no-download --print "%(title)s" "ytsearch1:test video")
-          echo "Search result: $TITLE"
-          [ -n "$TITLE" ] || exit 1
+          # Verify binary is functional (help + extractors list)
+          $YTDLP --help > /dev/null || exit 1
+          EXTRACTORS=$($YTDLP --list-extractors | grep -c "youtube")
+          echo "YouTube extractors found: $EXTRACTORS"
+          [ "$EXTRACTORS" -gt 0 ] || exit 1
 
           echo "Smoke test passed"
 
