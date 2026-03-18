@@ -11,7 +11,6 @@ pub struct AppConfig {
     pub theme: String,
     pub language: String,
     pub auto_update: bool,
-    pub previous_version: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -26,7 +25,6 @@ impl Default for AppConfig {
             theme: "dark".to_string(),
             language: "he".to_string(),
             auto_update: false,
-            previous_version: None,
         }
     }
 }

@@ -46,7 +46,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 flex-1 overflow-hidden">
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
           type="text"
@@ -69,7 +69,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       )}
 
       {results.length > 0 && (
-        <div className="flex flex-col gap-2 overflow-y-auto max-h-64">
+        <div className="flex flex-col gap-2 overflow-y-auto flex-1">
           {results.map((result) => (
             <div
               key={result.id}

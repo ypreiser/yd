@@ -5,12 +5,11 @@ import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
 import SearchBar from "./components/SearchBar";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
-import { downloadBatch, onDownloadProgress, getConfig, setConfig } from "./lib/tauri";
+import { downloadBatch, onDownloadProgress, getConfig, checkYtdlpUpdate, updateYtdlp } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { getVersion } from "@tauri-apps/api/app";
 
 type View = "main" | "settings";
 type InputMode = "url" | "search";
@@ -26,14 +25,20 @@ function UpdateBanner() {
   useEffect(() => {
     (async () => {
       try {
+        const config = await getConfig();
+
+        // Auto-update yt-dlp silently if enabled
+        if (config.auto_update) {
+          checkYtdlpUpdate().then(info => {
+            if (info.update_available) updateYtdlp().catch(() => {});
+          }).catch(() => {});
+        }
+
+        // Check app update
         const update = await check();
         if (!update) return;
 
-        const config = await getConfig();
         if (config.auto_update) {
-          // Save current version as rollback target, then auto-install
-          const currentVersion = await getVersion();
-          await setConfig({ ...config, previous_version: currentVersion });
           setStatus("downloading");
           await update.downloadAndInstall();
           setStatus("ready");
@@ -52,9 +57,6 @@ function UpdateBanner() {
     if (status !== "available") return;
     setStatus("downloading");
     try {
-      const config = await getConfig();
-      const currentVersion = await getVersion();
-      await setConfig({ ...config, previous_version: currentVersion });
       const update = await check();
       if (update) {
         await update.downloadAndInstall();

@@ -7,7 +7,6 @@ use download::DownloadState;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
@@ -26,6 +25,8 @@ pub fn run() {
             download::search_youtube,
             download::fetch_playlist,
             download::get_ytdlp_version,
+            download::check_ytdlp_update,
+            download::update_ytdlp,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

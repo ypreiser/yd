@@ -1,11 +1,12 @@
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::{Arc, LazyLock};
 use tauri::Emitter;
 use tauri::Manager;
-use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
 
@@ -18,6 +19,100 @@ use crate::config::load_config;
 
 const MAX_CONCURRENT: usize = 5;
 
+// --- yt-dlp path resolution ---
+
+fn ytdlp_path(app: &tauri::AppHandle) -> PathBuf {
+    // Prefer user-updated binary in app data dir
+    let app_data = app.path().app_data_dir().expect("no app data dir");
+    let local = if cfg!(windows) {
+        app_data.join("yt-dlp.exe")
+    } else {
+        app_data.join("yt-dlp")
+    };
+    if local.exists() {
+        return local;
+    }
+
+    // Fall back to bundled sidecar (next to exe)
+    let exe = std::env::current_exe().expect("no exe path");
+    let dir = exe.parent().expect("no parent dir");
+    if cfg!(windows) {
+        dir.join("yt-dlp-x86_64-pc-windows-msvc.exe")
+    } else {
+        dir.join("yt-dlp")
+    }
+}
+
+fn ffmpeg_location() -> String {
+    let exe = std::env::current_exe().expect("no exe path");
+    let exe_dir = exe.parent().expect("no parent dir");
+    exe_dir.to_string_lossy().to_string()
+}
+
+/// Run yt-dlp with args and return (stdout, stderr, success)
+async fn run_ytdlp(
+    app: &tauri::AppHandle,
+    args: &[&str],
+) -> Result<(Vec<u8>, Vec<u8>, bool), String> {
+    let output = tokio::process::Command::new(ytdlp_path(app))
+        .args(args)
+        .env("PYTHONUTF8", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok((output.stdout, output.stderr, output.status.success()))
+}
+
+/// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
+fn decode_output(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+
+        extern "system" {
+            fn MultiByteToWideChar(
+                code_page: u32,
+                flags: u32,
+                src: *const u8,
+                src_len: i32,
+                dst: *mut u16,
+                dst_len: i32,
+            ) -> i32;
+        }
+
+        const CP_ACP: u32 = 0;
+
+        unsafe {
+            let wide_len = MultiByteToWideChar(
+                CP_ACP, 0,
+                bytes.as_ptr(), bytes.len() as i32,
+                std::ptr::null_mut(), 0,
+            );
+            if wide_len > 0 {
+                let mut wide = vec![0u16; wide_len as usize];
+                MultiByteToWideChar(
+                    CP_ACP, 0,
+                    bytes.as_ptr(), bytes.len() as i32,
+                    wide.as_mut_ptr(), wide_len,
+                );
+                return OsString::from_wide(&wide).to_string_lossy().to_string();
+            }
+        }
+    }
+
+    String::from_utf8_lossy(bytes).to_string()
+}
+
+// --- Structs ---
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
     pub id: String,
@@ -28,32 +123,180 @@ pub struct SearchResult {
     pub thumbnail: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadProgress {
+    pub id: String,
+    pub url: String,
+    pub percent: f64,
+    pub title: Option<String>,
+    pub status: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistEntry {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+    pub thumbnail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistInfo {
+    pub title: String,
+    pub entries: Vec<PlaylistEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct YtdlpUpdateInfo {
+    pub current: String,
+    pub latest: String,
+    pub update_available: bool,
+}
+
+type ChildMap = Arc<Mutex<HashMap<String, u32>>>;
+type CancelledSet = Arc<Mutex<std::collections::HashSet<String>>>;
+
+pub struct DownloadState {
+    pub children: ChildMap,
+    pub cancelled: CancelledSet,
+    pub semaphore: Arc<Semaphore>,
+}
+
+impl DownloadState {
+    pub fn new() -> Self {
+        Self {
+            children: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT)),
+        }
+    }
+}
+
+fn kill_process_tree(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(unix)]
+    {
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGTERM);
+        }
+    }
+    Ok(())
+}
+
+fn is_valid_youtube_url(url: &str) -> bool {
+    let url = url.trim();
+    url.starts_with("https://www.youtube.com/")
+        || url.starts_with("http://www.youtube.com/")
+        || url.starts_with("https://youtube.com/")
+        || url.starts_with("http://youtube.com/")
+        || url.starts_with("https://youtu.be/")
+        || url.starts_with("http://youtu.be/")
+        || url.starts_with("https://music.youtube.com/")
+        || url.starts_with("http://music.youtube.com/")
+}
+
+// --- Commands ---
+
+#[tauri::command]
+pub async fn get_ytdlp_version(app: tauri::AppHandle) -> Result<String, String> {
+    let (stdout, _, success) = run_ytdlp(&app, &["--version"]).await?;
+
+    if !success {
+        return Err("Failed to get yt-dlp version".to_string());
+    }
+
+    Ok(decode_output(&stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo, String> {
+    let current = get_ytdlp_version(app).await?;
+
+    let client = reqwest::Client::new();
+    let resp: serde_json::Value = client
+        .get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        .header("User-Agent", "yd-app")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let latest = resp["tag_name"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    let update_available = !latest.is_empty() && latest > current;
+
+    Ok(YtdlpUpdateInfo {
+        current,
+        latest,
+        update_available,
+    })
+}
+
+#[tauri::command]
+pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
+    // Download to app data dir so path is always consistent
+    let app_data = app.path().app_data_dir().expect("no app data dir");
+    std::fs::create_dir_all(&app_data).ok();
+    let path = if cfg!(windows) {
+        app_data.join("yt-dlp.exe")
+    } else {
+        app_data.join("yt-dlp")
+    };
+
+    let client = reqwest::Client::new();
+    let bytes = client
+        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe")
+        .header("User-Agent", "yd-app")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+
+    // Verify new binary works — now ytdlp_path() will find the local copy
+    get_ytdlp_version(app).await
+}
+
 #[tauri::command]
 pub async fn search_youtube(
     app: tauri::AppHandle,
     query: String,
 ) -> Result<Vec<SearchResult>, String> {
-    let sidecar = app
-        .shell()
-        .sidecar("yt-dlp")
-        .expect("yt-dlp sidecar not found")
-        .env("PYTHONUTF8", "1")
-        .args([
+    let search_query = format!("ytsearch10:{}", query);
+    let (stdout, stderr, success) = run_ytdlp(
+        &app,
+        &[
             "--flat-playlist",
             "--no-download",
             "--add-header", "Cookie:PREF=f2=8000000",
             "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
-            &format!("ytsearch10:{}", query),
-        ]);
+            &search_query,
+        ],
+    )
+    .await?;
 
-    let output = sidecar.output().await.map_err(|e| e.to_string())?;
-
-    if !output.status.success() {
-        let stderr = decode_output(&output.stderr);
-        return Err(stderr);
+    if !success {
+        return Err(decode_output(&stderr));
     }
 
-    let stdout = decode_output(&output.stdout);
+    let stdout = decode_output(&stdout);
     let mut results = Vec::new();
 
     for line in stdout.lines() {
@@ -96,141 +339,6 @@ pub async fn search_youtube(
     Ok(results)
 }
 
-/// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
-fn decode_output(bytes: &[u8]) -> String {
-    // Try UTF-8 first (works if PYTHONUTF8=1 is effective)
-    if let Ok(s) = std::str::from_utf8(bytes) {
-        return s.to_string();
-    }
-
-    // Fall back to Windows system ANSI code page
-    #[cfg(windows)]
-    {
-        use std::ffi::OsString;
-        use std::os::windows::ffi::OsStringExt;
-
-        extern "system" {
-            fn MultiByteToWideChar(
-                code_page: u32,
-                flags: u32,
-                src: *const u8,
-                src_len: i32,
-                dst: *mut u16,
-                dst_len: i32,
-            ) -> i32;
-        }
-
-        const CP_ACP: u32 = 0; // system default ANSI code page
-
-        unsafe {
-            let wide_len = MultiByteToWideChar(
-                CP_ACP, 0,
-                bytes.as_ptr(), bytes.len() as i32,
-                std::ptr::null_mut(), 0,
-            );
-            if wide_len > 0 {
-                let mut wide = vec![0u16; wide_len as usize];
-                MultiByteToWideChar(
-                    CP_ACP, 0,
-                    bytes.as_ptr(), bytes.len() as i32,
-                    wide.as_mut_ptr(), wide_len,
-                );
-                return OsString::from_wide(&wide).to_string_lossy().to_string();
-            }
-        }
-    }
-
-    String::from_utf8_lossy(bytes).to_string()
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct DownloadProgress {
-    pub id: String,
-    pub url: String,
-    pub percent: f64,
-    pub title: Option<String>,
-    pub status: String, // "downloading", "converting", "done", "error"
-    pub error: Option<String>,
-}
-
-type ChildMap = Arc<Mutex<HashMap<String, u32>>>;
-type CancelledSet = Arc<Mutex<std::collections::HashSet<String>>>;
-
-pub struct DownloadState {
-    pub children: ChildMap,
-    pub cancelled: CancelledSet,
-    pub semaphore: Arc<Semaphore>,
-}
-
-impl DownloadState {
-    pub fn new() -> Self {
-        Self {
-            children: Arc::new(Mutex::new(HashMap::new())),
-            cancelled: Arc::new(Mutex::new(std::collections::HashSet::new())),
-            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT)),
-        }
-    }
-}
-
-fn ffmpeg_location() -> String {
-    // Tauri places all sidecar binaries next to the main exe (no triple suffix)
-    let exe = std::env::current_exe().expect("no exe path");
-    let exe_dir = exe.parent().expect("no parent dir");
-    exe_dir.to_string_lossy().to_string()
-}
-
-#[tauri::command]
-fn kill_process_tree(pid: u32) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        std::process::Command::new("taskkill")
-            .args(["/F", "/T", "/PID", &pid.to_string()])
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(unix)]
-    {
-        // Kill the process group (negative PID) to terminate child processes too
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGTERM);
-        }
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct PlaylistEntry {
-    pub id: String,
-    pub title: String,
-    pub url: String,
-    pub duration: String,
-    pub thumbnail: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct PlaylistInfo {
-    pub title: String,
-    pub entries: Vec<PlaylistEntry>,
-}
-
-#[tauri::command]
-pub async fn get_ytdlp_version(app: tauri::AppHandle) -> Result<String, String> {
-    let sidecar = app
-        .shell()
-        .sidecar("yt-dlp")
-        .expect("yt-dlp sidecar not found")
-        .args(["--version"]);
-
-    let output = sidecar.output().await.map_err(|e| e.to_string())?;
-
-    if !output.status.success() {
-        return Err("Failed to get yt-dlp version".to_string());
-    }
-
-    let version = decode_output(&output.stdout).trim().to_string();
-    Ok(version)
-}
-
 #[tauri::command]
 pub async fn fetch_playlist(
     app: tauri::AppHandle,
@@ -240,27 +348,23 @@ pub async fn fetch_playlist(
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
 
-    let sidecar = app
-        .shell()
-        .sidecar("yt-dlp")
-        .expect("yt-dlp sidecar not found")
-        .env("PYTHONUTF8", "1")
-        .args([
+    let (stdout, stderr, success) = run_ytdlp(
+        &app,
+        &[
             "--flat-playlist",
             "--no-download",
             "--print", "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
             "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
             &url,
-        ]);
+        ],
+    )
+    .await?;
 
-    let output = sidecar.output().await.map_err(|e| e.to_string())?;
-
-    if !output.status.success() {
-        let stderr = decode_output(&output.stderr);
-        return Err(stderr);
+    if !success {
+        return Err(decode_output(&stderr));
     }
 
-    let stdout = decode_output(&output.stdout);
+    let stdout = decode_output(&stdout);
     let mut playlist_title = String::new();
     let mut entries = Vec::new();
 
@@ -313,18 +417,6 @@ pub async fn fetch_playlist(
     })
 }
 
-fn is_valid_youtube_url(url: &str) -> bool {
-    let url = url.trim();
-    url.starts_with("https://www.youtube.com/")
-        || url.starts_with("http://www.youtube.com/")
-        || url.starts_with("https://youtube.com/")
-        || url.starts_with("http://youtube.com/")
-        || url.starts_with("https://youtu.be/")
-        || url.starts_with("http://youtu.be/")
-        || url.starts_with("https://music.youtube.com/")
-        || url.starts_with("http://music.youtube.com/")
-}
-
 #[tauri::command]
 pub async fn download(
     app: tauri::AppHandle,
@@ -345,6 +437,7 @@ pub async fn download(
     let children = state.children.clone();
     let cancelled = state.cancelled.clone();
     let ffmpeg_path = ffmpeg_location();
+    let bin_path = ytdlp_path(&app);
 
     let id_clone = id.clone();
     let url_clone = url.clone();
@@ -379,10 +472,8 @@ pub async fn download(
         )
         .ok();
 
-        let sidecar = app
-            .shell()
-            .sidecar("yt-dlp")
-            .expect("yt-dlp sidecar not found")
+        let output_template = format!("{}/%(title)s.%(ext)s", config.download_dir);
+        let result = tokio::process::Command::new(&bin_path)
             .env("PYTHONUTF8", "1")
             .args([
                 "--extract-audio",
@@ -394,110 +485,129 @@ pub async fn download(
                 &ffmpeg_path,
                 "--print", "before_dl:YTDL_TITLE:%(title)s",
                 "-o",
-                &format!("{}/%(title)s.%(ext)s", config.download_dir),
+                &output_template,
                 &url_clone,
-            ]);
-
-        let result = sidecar.spawn();
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
 
         match result {
-            Ok((mut rx, child)) => {
+            Ok(mut child) => {
+                let pid = child.id().unwrap_or(0);
                 {
                     let mut map = children.lock().await;
-                    map.insert(id_clone.clone(), child.pid());
+                    map.insert(id_clone.clone(), pid);
                 }
+
+                let stdout = child.stdout.take().unwrap();
+                let stderr = child.stderr.take().unwrap();
+
+                // Merge stdout + stderr via channel
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<(bool, String)>(100);
+
+                let tx_out = tx.clone();
+                tokio::spawn(async move {
+                    let mut lines = BufReader::new(stdout).lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let _ = tx_out.send((false, line)).await;
+                    }
+                });
+
+                let tx_err = tx;
+                tokio::spawn(async move {
+                    let mut lines = BufReader::new(stderr).lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let _ = tx_err.send((true, line)).await;
+                    }
+                });
 
                 let mut title: Option<String> = None;
                 let mut last_stderr = String::new();
 
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stderr(ref line_bytes) | CommandEvent::Stdout(ref line_bytes) => {
-                            let is_stderr = matches!(event, CommandEvent::Stderr(_));
-                            let line = decode_output(line_bytes);
-                            let line = line.trim();
+                while let Some((is_stderr, line)) = rx.recv().await {
+                    let line = line.trim().to_string();
 
-                            // Track last non-empty stderr line for error reporting
-                            if is_stderr && !line.is_empty() {
-                                last_stderr = line.to_string();
-                            }
+                    if is_stderr && !line.is_empty() {
+                        last_stderr = line.clone();
+                    }
 
-                            // Extract title from --print output
-                            if title.is_none() {
-                                if let Some(t) = line.strip_prefix("YTDL_TITLE:") {
-                                    title = Some(t.to_string());
-                                }
-                            }
-
-                            // Extract progress percentage
-                            if let Some(caps) = PROGRESS_RE.captures(line) {
-                                if let Ok(pct) = caps[1].parse::<f64>() {
-                                    let status = if line.contains("[ExtractAudio]") || line.contains("Post-process") {
-                                        "converting"
-                                    } else {
-                                        "downloading"
-                                    };
-                                    app.emit(
-                                        "download-progress",
-                                        DownloadProgress {
-                                            id: id_clone.clone(),
-                                            url: url_clone.clone(),
-                                            percent: pct,
-                                            title: title.clone(),
-                                            status: status.to_string(),
-                                            error: None,
-                                        },
-                                    )
-                                    .ok();
-                                }
-                            }
-
-                            if line.contains("[ExtractAudio]") {
-                                app.emit(
-                                    "download-progress",
-                                    DownloadProgress {
-                                        id: id_clone.clone(),
-                                        url: url_clone.clone(),
-                                        percent: 100.0,
-                                        title: title.clone(),
-                                        status: "converting".to_string(),
-                                        error: None,
-                                    },
-                                )
-                                .ok();
-                            }
+                    if title.is_none() {
+                        if let Some(t) = line.strip_prefix("YTDL_TITLE:") {
+                            title = Some(t.to_string());
                         }
-                        CommandEvent::Terminated(payload) => {
-                            let was_cancelled = cancelled.lock().await.remove(&id_clone);
-                            let success = payload.code == Some(0);
-                            let (status, error) = if was_cancelled {
-                                ("cancelled".to_string(), None)
-                            } else if success {
-                                ("done".to_string(), None)
+                    }
+
+                    if let Some(caps) = PROGRESS_RE.captures(&line) {
+                        if let Ok(pct) = caps[1].parse::<f64>() {
+                            let status = if line.contains("[ExtractAudio]") || line.contains("Post-process") {
+                                "converting"
                             } else {
-                                ("error".to_string(), Some(if last_stderr.is_empty() {
-                                    format!("yt-dlp exited with code {:?}", payload.code)
-                                } else {
-                                    last_stderr.clone()
-                                }))
+                                "downloading"
                             };
                             app.emit(
                                 "download-progress",
                                 DownloadProgress {
                                     id: id_clone.clone(),
                                     url: url_clone.clone(),
-                                    percent: if success { 100.0 } else { 0.0 },
+                                    percent: pct,
                                     title: title.clone(),
-                                    status,
-                                    error,
+                                    status: status.to_string(),
+                                    error: None,
                                 },
                             )
                             .ok();
-                            break;
                         }
-                        _ => {}
+                    }
+
+                    if line.contains("[ExtractAudio]") {
+                        app.emit(
+                            "download-progress",
+                            DownloadProgress {
+                                id: id_clone.clone(),
+                                url: url_clone.clone(),
+                                percent: 100.0,
+                                title: title.clone(),
+                                status: "converting".to_string(),
+                                error: None,
+                            },
+                        )
+                        .ok();
                     }
                 }
+
+                let exit = child.wait().await;
+                let was_cancelled = cancelled.lock().await.remove(&id_clone);
+                let success = exit.as_ref().map(|s| s.success()).unwrap_or(false);
+                let exit_code = exit.ok().and_then(|s: std::process::ExitStatus| s.code());
+
+                let (status, error): (String, Option<String>) = if was_cancelled {
+                    ("cancelled".to_string(), None)
+                } else if success {
+                    ("done".to_string(), None)
+                } else {
+                    (
+                        "error".to_string(),
+                        Some(if last_stderr.is_empty() {
+                            format!("yt-dlp exited with code {:?}", exit_code)
+                        } else {
+                            last_stderr.clone()
+                        }),
+                    )
+                };
+
+                app.emit(
+                    "download-progress",
+                    DownloadProgress {
+                        id: id_clone.clone(),
+                        url: url_clone.clone(),
+                        percent: if success { 100.0 } else { 0.0 },
+                        title: title.clone(),
+                        status,
+                        error,
+                    },
+                )
+                .ok();
 
                 {
                     let mut map = children.lock().await;
@@ -505,6 +615,7 @@ pub async fn download(
                 }
             }
             Err(e) => {
+                let err_str = e.to_string();
                 app.emit(
                     "download-progress",
                     DownloadProgress {
@@ -513,7 +624,7 @@ pub async fn download(
                         percent: 0.0,
                         title: None,
                         status: "error".to_string(),
-                        error: Some(e.to_string()),
+                        error: Some(err_str),
                     },
                 )
                 .ok();
