@@ -22,6 +22,6 @@ Features Worth Adding
 
 Robustness
 
-- yt-dlp version check - yt-dlp breaks often when YouTube changes things. A startup check that warns users if their bundled version is outdated would prevent confusing errors.
+- [x] yt-dlp version check - yt-dlp breaks often when YouTube changes things. A startup check that warns users if their bundled version is outdated would prevent confusing errors.
 - Disk space check - Before starting a large batch, check available disk space in the download directory.
 - Concurrent search cancellation - If a user types a new search while one is running, the old yt-dlp process keeps running. You should cancel it.

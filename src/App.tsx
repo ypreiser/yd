@@ -5,7 +5,13 @@ import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
 import SearchBar from "./components/SearchBar";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
-import { downloadBatch, onDownloadProgress, getConfig, checkYtdlpUpdate, updateYtdlp } from "./lib/tauri";
+import {
+  downloadBatch,
+  onDownloadProgress,
+  getConfig,
+  checkYtdlpUpdate,
+  updateYtdlp,
+} from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
@@ -29,9 +35,11 @@ function UpdateBanner() {
 
         // Auto-update yt-dlp silently if enabled
         if (config.auto_update) {
-          checkYtdlpUpdate().then(info => {
-            if (info.update_available) updateYtdlp().catch(() => {});
-          }).catch(() => {});
+          checkYtdlpUpdate()
+            .then((info) => {
+              if (info.update_available) updateYtdlp().catch(() => {});
+            })
+            .catch(() => {});
         }
 
         // Check app update
@@ -83,7 +91,7 @@ function UpdateBanner() {
         {status === "available" && (
           <button
             onClick={handleUpdate}
-            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-all font-medium active:scale-[0.97]"
           >
             {t.updateNow}
           </button>
@@ -91,7 +99,7 @@ function UpdateBanner() {
         {status === "ready" && (
           <button
             onClick={() => relaunch()}
-            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+            className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 transition-all font-medium active:scale-[0.97]"
           >
             {t.updateNow}
           </button>
@@ -99,7 +107,7 @@ function UpdateBanner() {
         {status !== "downloading" && (
           <button
             onClick={() => setDismissed(true)}
-            className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium"
+            className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-all font-medium active:scale-[0.97]"
           >
             ✕
           </button>
@@ -109,13 +117,7 @@ function UpdateBanner() {
   );
 }
 
-function Header({
-  view,
-  setView,
-}: {
-  view: View;
-  setView: (v: View) => void;
-}) {
+function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
   const t = useT();
   return (
     <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
@@ -139,7 +141,7 @@ function App() {
   const [view, setView] = useState<View>("main");
   const [inputMode, setInputMode] = useState<InputMode>("url");
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(
-    new Map()
+    new Map(),
   );
   const [language, setLanguage] = useState<Language>("he");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -177,10 +179,16 @@ function App() {
         // Remove finished entries beyond a limit to prevent unbounded growth
         const MAX_FINISHED = 50;
         const finished = Array.from(next.entries()).filter(
-          ([, p]) => p.status === "done" || p.status === "error" || p.status === "cancelled"
+          ([, p]) =>
+            p.status === "done" ||
+            p.status === "error" ||
+            p.status === "cancelled",
         );
         if (finished.length > MAX_FINISHED) {
-          for (const [id] of finished.slice(0, finished.length - MAX_FINISHED)) {
+          for (const [id] of finished.slice(
+            0,
+            finished.length - MAX_FINISHED,
+          )) {
             next.delete(id);
           }
         }
@@ -214,7 +222,7 @@ function App() {
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
         <UpdateBanner />
         <Header view={view} setView={setView} />
-        <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden">
+        <div className="flex-1 flex flex-col p-2 gap-4 overflow-hidden min-h-0">
           {view === "settings" ? (
             <Settings
               onClose={() => setView("main")}
@@ -222,23 +230,23 @@ function App() {
             />
           ) : (
             <>
-              <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700 -mt-1 mb-1">
+              <div className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">
                 <button
                   onClick={() => setInputMode("url")}
-                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                     inputMode === "url"
-                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
-                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                   }`}
                 >
                   URL
                 </button>
                 <button
                   onClick={() => setInputMode("search")}
-                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                     inputMode === "search"
-                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
-                      : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                   }`}
                 >
                   {t.search}

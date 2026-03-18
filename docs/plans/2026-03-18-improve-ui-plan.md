@@ -1,7 +1,7 @@
 # Plan: Improve UI
 
 **Date**: 2026-03-18
-**Status**: Draft
+**Status**: Approved
 **Author**: Claude + user
 
 ## Context

@@ -21,6 +21,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [pendingPlaylists, setPendingPlaylists] = useState<string[]>([]);
+  const [dragOver, setDragOver] = useState(false);
 
   function extractUrls(input: string): string[] {
     const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+|(?:channel|c)\/[^\s?]+|@[^\s?/]+(?:\/[^\s?]*)?)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
@@ -101,10 +102,17 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={() => setDragOver(false)}
           placeholder={t.urlPlaceholder}
           rows={3}
           disabled={disabled || playlistLoading}
-          className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none transition-colors"
+          className={`w-full rounded-lg border bg-white dark:bg-zinc-800 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none transition-all ${
+            dragOver
+              ? "border-indigo-400 border-dashed bg-indigo-50/50 dark:bg-indigo-950/20"
+              : "border-zinc-300 dark:border-zinc-700"
+          }`}
         />
         {playlistError && (
           <p className="text-sm text-red-500">{playlistError}</p>
@@ -112,7 +120,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
         <button
           type="submit"
           disabled={disabled || playlistLoading || text.trim().length === 0}
-          className="self-end rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="self-end rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           {playlistLoading
             ? t.loadingPlaylist

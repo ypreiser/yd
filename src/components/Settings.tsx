@@ -18,6 +18,14 @@ interface SettingsProps {
 
 const AUDIO_FORMATS = ["m4a", "mp3", "opus", "flac"];
 
+function Section({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-white dark:bg-zinc-800/30 p-4 flex flex-col gap-4">
+      {children}
+    </div>
+  );
+}
+
 export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const t = useT();
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
@@ -56,221 +64,238 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   if (!config) return null;
 
   const inputClass =
-    "w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors";
+    "w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all";
 
   return (
-    <div className="overflow-y-auto flex-1">
-      <div className="flex flex-col gap-6 max-w-lg">
+    <div className="overflow-y-auto flex-1 min-h-0">
+      <div className="flex flex-col gap-4 max-w-lg">
         <h2 className="text-lg font-semibold">{t.settings}</h2>
 
-        {/* Download Directory */}
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="download-dir-input"
-            className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
-          >
-            {t.downloadDir}
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="download-dir-input"
-              type="text"
-              placeholder={t.downloadDir}
-              value={config.download_dir}
-              onChange={(e) =>
-                setLocalConfig({ ...config, download_dir: e.target.value })
-              }
-              className={`flex-1 ${inputClass}`}
-            />
-            <button
-              onClick={handlePickDir}
-              className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        {/* Download Settings */}
+        <Section>
+          {/* Download Directory */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="download-dir"
+              className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
             >
-              {t.browse}
-            </button>
-          </div>
-        </div>
-
-        {/* Audio Format */}
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="audio-format-select"
-            className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
-          >
-            {t.audioFormat}
-          </label>
-          <select
-            id="audio-format-select"
-            value={config.audio_format}
-            onChange={(e) =>
-              setLocalConfig({ ...config, audio_format: e.target.value })
-            }
-            className={inputClass}
-          >
-            {AUDIO_FORMATS.map((f) => (
-              <option key={f} value={f}>
-                {f.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Theme */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {t.theme}
-          </label>
-          <div className="flex gap-2">
-            {(["dark", "light"] as const).map((th) => (
+              {t.downloadDir}
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="download-dir"
+                type="text"
+                value={config.download_dir}
+                onChange={(e) =>
+                  setLocalConfig({ ...config, download_dir: e.target.value })
+                }
+                className={`flex-1 ${inputClass}`}
+              />
               <button
-                key={th}
-                onClick={() => setLocalConfig({ ...config, theme: th })}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                  config.theme === th
-                    ? "border-indigo-500 bg-indigo-600 text-white"
-                    : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                }`}
+                onClick={handlePickDir}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
               >
-                {th === "dark" ? t.themeDark : t.themeLight}
+                {t.browse}
               </button>
-            ))}
+            </div>
           </div>
-        </div>
 
-        {/* Language */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {t.language}
-          </label>
-          <div className="flex gap-2">
-            {[
-              { code: "he" as const, label: "עברית" },
-              { code: "en" as const, label: "English" },
-            ].map(({ code, label }) => (
-              <button
-                key={code}
-                onClick={() => setLocalConfig({ ...config, language: code })}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                  config.language === code
-                    ? "border-indigo-500 bg-indigo-600 text-white"
-                    : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          {/* Audio Format */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="audio-format"
+              className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
+            >
+              {t.audioFormat}
+            </label>
+            <select
+              id="audio-format"
+              title={t.audioFormat}
+              value={config.audio_format}
+              onChange={(e) =>
+                setLocalConfig({ ...config, audio_format: e.target.value })
+              }
+              className={inputClass}
+            >
+              {AUDIO_FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {f.toUpperCase()}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+        </Section>
 
-        {/* Auto Update */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {t.autoUpdate}
-          </label>
-          <div className="flex gap-2">
-            {([false, true] as const).map((val) => (
-              <button
-                key={String(val)}
-                onClick={() => setLocalConfig({ ...config, auto_update: val })}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                  config.auto_update === val
-                    ? "border-indigo-500 bg-indigo-600 text-white"
-                    : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-                }`}
-              >
-                {val ? t.autoUpdateOn : t.autoUpdateOff}
-              </button>
-            ))}
+        {/* Appearance */}
+        <Section>
+          {/* Theme */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.theme}
+            </label>
+            <div className="flex gap-2">
+              {(["dark", "light"] as const).map((th) => (
+                <button
+                  key={th}
+                  onClick={() => setLocalConfig({ ...config, theme: th })}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config.theme === th
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {th === "dark" ? t.themeDark : t.themeLight}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* yt-dlp Version + Update */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {t.ytdlpVersion}
-          </label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-zinc-600 dark:text-zinc-300">
-              {ytdlpVer || "..."}
-            </span>
-            {ytdlpStatus === "idle" && (
-              <button
-                onClick={async () => {
-                  setYtdlpStatus("checking");
-                  try {
-                    const info = await checkYtdlpUpdate();
-                    if (info.update_available) {
-                      setYtdlpLatest(info.latest);
-                      setYtdlpStatus("available");
-                    } else {
-                      setYtdlpStatus("done");
-                    }
-                  } catch {
-                    setYtdlpStatus("error");
+          {/* Language */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.language}
+            </label>
+            <div className="flex gap-2">
+              {[
+                { code: "he" as const, label: "עברית" },
+                { code: "en" as const, label: "English" },
+              ].map(({ code, label }) => (
+                <button
+                  key={code}
+                  onClick={() => setLocalConfig({ ...config, language: code })}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config.language === code
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Section>
+
+        {/* Updates */}
+        <Section>
+          {/* Auto Update */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.autoUpdate}
+            </label>
+            <div className="flex gap-2">
+              {([false, true] as const).map((val) => (
+                <button
+                  key={String(val)}
+                  onClick={() =>
+                    setLocalConfig({ ...config, auto_update: val })
                   }
-                }}
-                className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-              >
-                {t.checkForYtdlpUpdate}
-              </button>
-            )}
-            {ytdlpStatus === "checking" && (
-              <span className="text-xs text-zinc-400">{t.searching}</span>
-            )}
-            {ytdlpStatus === "available" && (
-              <>
-                <span className="text-xs text-amber-500">
-                  {t.ytdlpUpdateAvailable(ytdlpLatest)}
-                </span>
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config.auto_update === val
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {val ? t.autoUpdateOn : t.autoUpdateOff}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* yt-dlp Version + Update */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.ytdlpVersion}
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-zinc-600 dark:text-zinc-300">
+                {ytdlpVer || "..."}
+              </span>
+              {ytdlpStatus === "idle" && (
                 <button
                   onClick={async () => {
-                    setYtdlpStatus("updating");
+                    setYtdlpStatus("checking");
                     try {
-                      const newVer = await updateYtdlp();
-                      console.log({ newVer });
-                      setYtdlpVer(newVer);
-                      setYtdlpStatus("done");
+                      const info = await checkYtdlpUpdate();
+                      if (info.update_available) {
+                        setYtdlpLatest(info.latest);
+                        setYtdlpStatus("available");
+                      } else {
+                        setYtdlpStatus("done");
+                      }
                     } catch {
                       setYtdlpStatus("error");
                     }
                   }}
-                  className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500 transition-colors"
+                  className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                 >
-                  {t.updateYtdlp}
+                  {t.checkForYtdlpUpdate}
                 </button>
-              </>
-            )}
-            {ytdlpStatus === "updating" && (
-              <span className="text-xs text-indigo-400">{t.ytdlpUpdating}</span>
-            )}
-            {ytdlpStatus === "done" && (
-              <span className="text-xs text-green-500">{t.ytdlpUpToDate}</span>
-            )}
-            {ytdlpStatus === "error" && (
-              <span className="text-xs text-red-500">{t.ytdlpUpdateError}</span>
-            )}
+              )}
+              {ytdlpStatus === "checking" && (
+                <span className="text-xs text-zinc-400">{t.searching}</span>
+              )}
+              {ytdlpStatus === "available" && (
+                <>
+                  <span className="text-xs text-amber-500">
+                    {t.ytdlpUpdateAvailable(ytdlpLatest)}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      setYtdlpStatus("updating");
+                      try {
+                        const newVer = await updateYtdlp();
+                        console.log({ newVer });
+                        setYtdlpVer(newVer);
+                        setYtdlpStatus("done");
+                      } catch {
+                        setYtdlpStatus("error");
+                      }
+                    }}
+                    className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-500 transition-colors"
+                  >
+                    {t.updateYtdlp}
+                  </button>
+                </>
+              )}
+              {ytdlpStatus === "updating" && (
+                <span className="text-xs text-indigo-400">
+                  {t.ytdlpUpdating}
+                </span>
+              )}
+              {ytdlpStatus === "done" && (
+                <span className="text-xs text-green-500">
+                  {t.ytdlpUpToDate}
+                </span>
+              )}
+              {ytdlpStatus === "error" && (
+                <span className="text-xs text-red-500">
+                  {t.ytdlpUpdateError}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* App Version */}
-        {appVersion && (
-          <div className="text-xs text-zinc-400 dark:text-zinc-500">
-            {t.version} {appVersion}
-          </div>
-        )}
+          {/* App Version */}
+          {appVersion && (
+            <div className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.version} {appVersion}
+            </div>
+          )}
+        </Section>
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end pt-2">
+        <div className="flex gap-2 justify-end pt-2 pb-4">
           <button
             onClick={onClose}
-            className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-[0.97] transition-all"
           >
             {t.cancel}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40 transition-colors"
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 transition-all"
           >
             {t.save}
           </button>

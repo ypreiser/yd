@@ -481,6 +481,7 @@ pub async fn download(
                 &config.audio_format,
                 "--newline",
                 "--progress",
+                "--windows-filenames",
                 "--ffmpeg-location",
                 &ffmpeg_path,
                 "--print", "before_dl:YTDL_TITLE:%(title)s",

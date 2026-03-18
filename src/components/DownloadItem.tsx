@@ -27,6 +27,7 @@ export default function DownloadItem({ item }: DownloadItemProps) {
   const t = useT();
   const label = item.title || item.url;
   const canCancel = item.status === "downloading" || item.status === "queued";
+  const isActive = item.status === "downloading" || item.status === "converting";
 
   const statusLabels: Record<string, string> = {
     queued: t.queued,
@@ -46,14 +47,28 @@ export default function DownloadItem({ item }: DownloadItemProps) {
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-white dark:bg-zinc-800/50 p-3 flex flex-col gap-2 transition-colors">
+    <div
+      className={`animate-fade-in rounded-lg border bg-white dark:bg-zinc-800/50 p-3 flex flex-col gap-2 transition-all ${
+        isActive
+          ? "border-indigo-300/50 dark:border-indigo-500/30 animate-pulse-glow"
+          : "border-zinc-200 dark:border-zinc-700/50"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span
-          className="text-sm text-zinc-800 dark:text-zinc-200 truncate flex-1"
-          title={label}
-        >
-          {label}
-        </span>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {item.status === "done" && (
+            <span className="animate-check text-emerald-500 text-sm shrink-0">✓</span>
+          )}
+          {item.status === "error" && (
+            <span className="text-red-500 text-sm shrink-0">✕</span>
+          )}
+          <span
+            className="text-sm text-zinc-800 dark:text-zinc-200 truncate"
+            title={label}
+          >
+            {label}
+          </span>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           <span
             className={`text-xs font-medium ${STATUS_COLORS[item.status]}`}
@@ -64,7 +79,7 @@ export default function DownloadItem({ item }: DownloadItemProps) {
           {canCancel && (
             <button
               onClick={handleCancel}
-              className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 transition-colors text-xs"
+              className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 active:scale-[0.9] transition-all text-xs"
               title={t.cancel}
             >
               ✕
@@ -75,9 +90,11 @@ export default function DownloadItem({ item }: DownloadItemProps) {
       {item.status !== "done" &&
         item.status !== "error" &&
         item.status !== "cancelled" && (
-          <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+          <div className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${BAR_COLORS[item.status]}`}
+              className={`h-full rounded-full transition-all duration-300 relative ${BAR_COLORS[item.status]} ${
+                item.status === "downloading" ? "progress-bar-active" : ""
+              }`}
               style={{ width: `${item.percent}%` }}
             />
           </div>
