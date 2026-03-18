@@ -64,9 +64,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
         </button>
       </form>
 
-      {error && (
-        <p className="text-sm text-red-500">{error}</p>
-      )}
+      {error && <p className="text-sm text-red-500">{error}</p>}
 
       {results.length > 0 && (
         <div className="flex flex-col gap-2 overflow-y-auto flex-1">
@@ -78,7 +76,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
               <img
                 src={result.thumbnail}
                 alt=""
-                className="w-20 h-14 rounded object-cover flex-shrink-0 bg-zinc-200 dark:bg-zinc-700"
+                className="w-20 h-14 rounded object-cover shrink-0 bg-zinc-200 dark:bg-zinc-700"
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
@@ -91,7 +89,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
               </div>
               <button
                 onClick={() => handleDownload(result.url)}
-                className="flex-shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 transition-colors"
+                className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 transition-colors"
               >
                 {t.addToDownload}
               </button>
