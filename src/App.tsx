@@ -222,7 +222,7 @@ function App() {
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
         <UpdateBanner />
         <Header view={view} setView={setView} />
-        <div className="flex-1 flex flex-col p-2 gap-4 overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0">
           {view === "settings" ? (
             <Settings
               onClose={() => setView("main")}

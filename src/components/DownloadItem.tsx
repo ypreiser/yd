@@ -1,6 +1,8 @@
+import { memo } from "react";
 import type { DownloadProgress } from "../lib/tauri";
 import { cancelDownload } from "../lib/tauri";
 import { useT } from "../lib/i18n";
+import type { Translations } from "../lib/i18n";
 
 interface DownloadItemProps {
   item: DownloadProgress;
@@ -23,20 +25,20 @@ const BAR_COLORS: Record<string, string> = {
   error: "bg-red-500",
 };
 
-export default function DownloadItem({ item }: DownloadItemProps) {
+const STATUS_KEYS: Record<string, keyof Translations> = {
+  queued: "queued",
+  downloading: "downloading",
+  converting: "converting",
+  done: "done",
+  cancelled: "cancelled",
+  error: "error",
+};
+
+function DownloadItem({ item }: DownloadItemProps) {
   const t = useT();
   const label = item.title || item.url;
   const canCancel = item.status === "downloading" || item.status === "queued";
   const isActive = item.status === "downloading" || item.status === "converting";
-
-  const statusLabels: Record<string, string> = {
-    queued: t.queued,
-    downloading: t.downloading,
-    converting: t.converting,
-    done: t.done,
-    cancelled: t.cancelled,
-    error: t.error,
-  };
 
   async function handleCancel() {
     try {
@@ -73,7 +75,7 @@ export default function DownloadItem({ item }: DownloadItemProps) {
           <span
             className={`text-xs font-medium ${STATUS_COLORS[item.status]}`}
           >
-            {statusLabels[item.status]}
+            {t[STATUS_KEYS[item.status]] as string}
             {item.status === "downloading" && ` ${Math.round(item.percent)}%`}
           </span>
           {canCancel && (
@@ -103,3 +105,5 @@ export default function DownloadItem({ item }: DownloadItemProps) {
     </div>
   );
 }
+
+export default memo(DownloadItem);
