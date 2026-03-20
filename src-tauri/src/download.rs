@@ -504,22 +504,28 @@ pub async fn download(
                 let stdout = child.stdout.take().unwrap();
                 let stderr = child.stderr.take().unwrap();
 
-                // Merge stdout + stderr via channel
+                // Merge stdout + stderr via channel (read raw bytes to handle non-UTF-8)
                 let (tx, mut rx) = tokio::sync::mpsc::channel::<(bool, String)>(100);
 
                 let tx_out = tx.clone();
                 tokio::spawn(async move {
-                    let mut lines = BufReader::new(stdout).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
+                    let mut reader = BufReader::new(stdout);
+                    let mut buf = Vec::new();
+                    while reader.read_until(b'\n', &mut buf).await.unwrap_or(0) > 0 {
+                        let line = decode_output(&buf);
                         let _ = tx_out.send((false, line)).await;
+                        buf.clear();
                     }
                 });
 
                 let tx_err = tx;
                 tokio::spawn(async move {
-                    let mut lines = BufReader::new(stderr).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
+                    let mut reader = BufReader::new(stderr);
+                    let mut buf = Vec::new();
+                    while reader.read_until(b'\n', &mut buf).await.unwrap_or(0) > 0 {
+                        let line = decode_output(&buf);
                         let _ = tx_err.send((true, line)).await;
+                        buf.clear();
                     }
                 });
 
