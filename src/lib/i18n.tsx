@@ -53,16 +53,18 @@ export interface Translations {
   upToDate: string;
   // yt-dlp
   ytdlpVersion: string;
+  ytdlpUpdateAvailable: (latest: string) => string;
+  ytdlpUpdating: string;
+  ytdlpUpToDate: string;
+  ytdlpUpdateError: string;
+  checkForYtdlpUpdate: string;
+  updateYtdlp: string;
   // auto-update
   autoUpdate: string;
   autoUpdateOn: string;
   autoUpdateOff: string;
   enableAutoUpdate: string;
   autoUpdating: string;
-  // rollback
-  rollback: (version: string) => string;
-  rollbackConfirm: (version: string) => string;
-  rollingBack: string;
 }
 
 const en: Translations = {
@@ -110,14 +112,17 @@ const en: Translations = {
   checkForUpdates: "Check for updates",
   upToDate: "Up to date",
   ytdlpVersion: "yt-dlp Version",
+  ytdlpUpdateAvailable: (v) => `Update available: ${v}`,
+  ytdlpUpdating: "Updating yt-dlp...",
+  ytdlpUpToDate: "Up to date",
+  ytdlpUpdateError: "Update failed",
+  checkForYtdlpUpdate: "Check",
+  updateYtdlp: "Update",
   autoUpdate: "Auto Update",
   autoUpdateOn: "On",
   autoUpdateOff: "Off",
   enableAutoUpdate: "Enable auto-update in Settings",
   autoUpdating: "Updating...",
-  rollback: (v) => `Rollback to v${v}`,
-  rollbackConfirm: (v) => `Rollback to v${v}? The app will restart.`,
-  rollingBack: "Rolling back...",
 };
 
 const he: Translations = {
@@ -165,14 +170,17 @@ const he: Translations = {
   checkForUpdates: "בדוק עדכונים",
   upToDate: "מעודכן",
   ytdlpVersion: "גרסת yt-dlp",
+  ytdlpUpdateAvailable: (v) => `עדכון זמין: ${v}`,
+  ytdlpUpdating: "מעדכן yt-dlp...",
+  ytdlpUpToDate: "מעודכן",
+  ytdlpUpdateError: "העדכון נכשל",
+  checkForYtdlpUpdate: "בדוק",
+  updateYtdlp: "עדכן",
   autoUpdate: "עדכון אוטומטי",
   autoUpdateOn: "פעיל",
   autoUpdateOff: "כבוי",
   enableAutoUpdate: "הפעל עדכון אוטומטי בהגדרות",
   autoUpdating: "מעדכן...",
-  rollback: (v) => `חזור לגרסה ${v}`,
-  rollbackConfirm: (v) => `לחזור לגרסה ${v}? האפליקציה תופעל מחדש.`,
-  rollingBack: "חוזר לגרסה קודמת...",
 };
 
 const locales: Record<Language, Translations> = { en, he };

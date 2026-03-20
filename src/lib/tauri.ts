@@ -7,7 +7,6 @@ export interface AppConfig {
   theme: "dark" | "light";
   language: "en" | "he";
   auto_update: boolean;
-  previous_version: string | null;
 }
 
 export interface DownloadProgress {
@@ -71,6 +70,20 @@ export async function fetchPlaylist(url: string): Promise<PlaylistInfo> {
 
 export async function getYtdlpVersion(): Promise<string> {
   return invoke("get_ytdlp_version");
+}
+
+export interface YtdlpUpdateInfo {
+  current: string;
+  latest: string;
+  update_available: boolean;
+}
+
+export async function checkYtdlpUpdate(): Promise<YtdlpUpdateInfo> {
+  return invoke("check_ytdlp_update");
+}
+
+export async function updateYtdlp(): Promise<string> {
+  return invoke("update_ytdlp");
 }
 
 export function onDownloadProgress(
