@@ -104,7 +104,14 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
           onChange={(e) => setText(e.target.value)}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const dropped = e.dataTransfer.getData("text/uri-list")
+              || e.dataTransfer.getData("text/plain")
+              || e.dataTransfer.getData("text");
+            if (dropped) setText((prev) => prev ? `${prev}\n${dropped}` : dropped);
+          }}
           placeholder={t.urlPlaceholder}
           rows={3}
           disabled={disabled || playlistLoading}
@@ -117,10 +124,24 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
         {playlistError && (
           <p className="text-sm text-red-500">{playlistError}</p>
         )}
+        <div className="flex gap-2 self-end">
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              const clip = await navigator.clipboard.readText();
+              if (clip) setText((prev) => prev ? `${prev}\n${clip}` : clip);
+            } catch { /* clipboard denied */ }
+          }}
+          disabled={disabled || playlistLoading}
+          className="rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        >
+          {t.paste}
+        </button>
         <button
           type="submit"
           disabled={disabled || playlistLoading || text.trim().length === 0}
-          className="self-end rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           {playlistLoading
             ? t.loadingPlaylist
@@ -130,6 +151,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
                 ? t.downloadN(lineCount)
                 : t.download}
         </button>
+        </div>
       </form>
 
       {playlistData && (

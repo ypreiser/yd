@@ -1,11 +1,13 @@
 import { memo } from "react";
 import type { DownloadProgress } from "../lib/tauri";
-import { cancelDownload } from "../lib/tauri";
+import { cancelDownload, getConfig } from "../lib/tauri";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { useT } from "../lib/i18n";
 import type { Translations } from "../lib/i18n";
 
 interface DownloadItemProps {
   item: DownloadProgress;
+  onRetry?: (url: string) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -34,7 +36,7 @@ const STATUS_KEYS: Record<string, keyof Translations> = {
   error: "error",
 };
 
-function DownloadItem({ item }: DownloadItemProps) {
+function DownloadItem({ item, onRetry }: DownloadItemProps) {
   const t = useT();
   const label = item.title || item.url;
   const canCancel = item.status === "downloading" || item.status === "queued";
@@ -85,6 +87,29 @@ function DownloadItem({ item }: DownloadItemProps) {
               title={t.cancel}
             >
               ✕
+            </button>
+          )}
+          {item.status === "done" && (
+            <button
+              onClick={async () => {
+                try {
+                  const cfg = await getConfig();
+                  await openPath(cfg.download_dir);
+                } catch { /* ignore */ }
+              }}
+              className="text-zinc-400 hover:text-indigo-500 dark:text-zinc-500 dark:hover:text-indigo-400 active:scale-[0.9] transition-all text-xs"
+              title={t.openFolder}
+            >
+              📂
+            </button>
+          )}
+          {item.status === "error" && onRetry && (
+            <button
+              onClick={() => onRetry(item.url)}
+              className="text-zinc-400 hover:text-amber-500 dark:text-zinc-500 dark:hover:text-amber-400 active:scale-[0.9] transition-all text-xs"
+              title={t.retry}
+            >
+              ↻
             </button>
           )}
         </div>

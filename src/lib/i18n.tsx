@@ -65,6 +65,13 @@ export interface Translations {
   autoUpdateOff: string;
   enableAutoUpdate: string;
   autoUpdating: string;
+  missingBinaries: (bins: string) => string;
+  paste: string;
+  clearFinished: string;
+  openFolder: string;
+  retry: string;
+  lowDiskSpace: string;
+  stop: string;
 }
 
 const en: Translations = {
@@ -123,6 +130,13 @@ const en: Translations = {
   autoUpdateOff: "Off",
   enableAutoUpdate: "Enable auto-update in Settings",
   autoUpdating: "Updating...",
+  missingBinaries: (bins) => `Missing required binaries: ${bins}. See README for setup.`,
+  paste: "Paste",
+  clearFinished: "Clear finished",
+  openFolder: "Open folder",
+  retry: "Retry",
+  lowDiskSpace: "Low disk space in download directory. Continue anyway?",
+  stop: "Stop",
 };
 
 const he: Translations = {
@@ -181,6 +195,13 @@ const he: Translations = {
   autoUpdateOff: "כבוי",
   enableAutoUpdate: "הפעל עדכון אוטומטי בהגדרות",
   autoUpdating: "מעדכן...",
+  missingBinaries: (bins) => `קבצים חסרים: ${bins}. ראה README להתקנה.`,
+  paste: "הדבקה",
+  clearFinished: "נקה הושלמו",
+  openFolder: "פתח תיקייה",
+  retry: "נסה שוב",
+  lowDiskSpace: "מקום נמוך בדיסק בתיקיית ההורדות. להמשיך בכל זאת?",
+  stop: "עצור",
 };
 
 const locales: Record<Language, Translations> = { en, he };

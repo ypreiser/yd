@@ -49,6 +49,29 @@ fn ffmpeg_location() -> String {
     exe_dir.to_string_lossy().to_string()
 }
 
+#[tauri::command]
+pub async fn check_binaries(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
+
+    let ytdlp = ytdlp_path(&app);
+    if !ytdlp.exists() {
+        missing.push("yt-dlp".to_string());
+    }
+
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe.parent().ok_or("no parent dir")?;
+    let ffmpeg_exists = if cfg!(windows) {
+        dir.join("ffmpeg-x86_64-pc-windows-msvc.exe").exists() || dir.join("ffmpeg.exe").exists()
+    } else {
+        dir.join("ffmpeg").exists()
+    };
+    if !ffmpeg_exists {
+        missing.push("ffmpeg".to_string());
+    }
+
+    Ok(missing)
+}
+
 /// Run yt-dlp with args and return (stdout, stderr, success)
 async fn run_ytdlp(
     app: &tauri::AppHandle,
@@ -174,6 +197,18 @@ impl DownloadState {
     }
 }
 
+pub struct SearchState {
+    pub pid: Arc<Mutex<Option<u32>>>,
+}
+
+impl SearchState {
+    pub fn new() -> Self {
+        Self {
+            pid: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
 fn kill_process_tree(pid: u32) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -201,6 +236,60 @@ fn is_valid_youtube_url(url: &str) -> bool {
         || url.starts_with("http://youtu.be/")
         || url.starts_with("https://music.youtube.com/")
         || url.starts_with("http://music.youtube.com/")
+}
+
+// --- Disk space ---
+
+#[tauri::command]
+pub async fn check_disk_space(path: String) -> Result<u64, String> {
+    #[cfg(windows)]
+    {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+
+        extern "system" {
+            fn GetDiskFreeSpaceExW(
+                directory: *const u16,
+                free_bytes_available: *mut u64,
+                total_bytes: *mut u64,
+                total_free_bytes: *mut u64,
+            ) -> i32;
+        }
+
+        let wide: Vec<u16> = OsStr::new(&path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        let mut free: u64 = 0;
+        let mut _total: u64 = 0;
+        let mut _total_free: u64 = 0;
+
+        let result = unsafe {
+            GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut _total, &mut _total_free)
+        };
+
+        if result == 0 {
+            return Err("Failed to check disk space".to_string());
+        }
+
+        Ok(free)
+    }
+
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+
+        let c_path = CString::new(path).map_err(|e| e.to_string())?;
+        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+        let result = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+
+        if result != 0 {
+            return Err("Failed to check disk space".to_string());
+        }
+
+        Ok(stat.f_bavail as u64 * stat.f_frsize as u64)
+    }
 }
 
 // --- Commands ---
@@ -275,28 +364,70 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub async fn cancel_search(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<SearchState>();
+    let mut pid_lock = state.pid.lock().await;
+    if let Some(pid) = pid_lock.take() {
+        kill_process_tree(pid).ok();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn search_youtube(
     app: tauri::AppHandle,
     query: String,
 ) -> Result<Vec<SearchResult>, String> {
+    // Cancel any in-progress search
+    {
+        let state = app.state::<SearchState>();
+        let mut pid_lock = state.pid.lock().await;
+        if let Some(old_pid) = pid_lock.take() {
+            kill_process_tree(old_pid).ok();
+        }
+    }
+
     let search_query = format!("ytsearch10:{}", query);
-    let (stdout, stderr, success) = run_ytdlp(
-        &app,
-        &[
+
+    let child = tokio::process::Command::new(ytdlp_path(&app))
+        .args([
             "--flat-playlist",
             "--no-download",
             "--add-header", "Cookie:PREF=f2=8000000",
             "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
             &search_query,
-        ],
-    )
-    .await?;
+        ])
+        .env("PYTHONUTF8", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
 
-    if !success {
-        return Err(decode_output(&stderr));
+    // Track PID for cancellation
+    let pid = child.id().unwrap_or(0);
+    {
+        let state = app.state::<SearchState>();
+        *state.pid.lock().await = Some(pid);
     }
 
-    let stdout = decode_output(&stdout);
+    let output = child.wait_with_output().await.map_err(|e| e.to_string())?;
+
+    // Clear tracked PID
+    {
+        let state = app.state::<SearchState>();
+        let mut pid_lock = state.pid.lock().await;
+        if *pid_lock == Some(pid) {
+            *pid_lock = None;
+        }
+    }
+
+    let (stdout_bytes, stderr_bytes, success) = (output.stdout, output.stderr, output.status.success());
+
+    if !success {
+        return Err(decode_output(&stderr_bytes));
+    }
+
+    let stdout = decode_output(&stdout_bytes);
     let mut results = Vec::new();
 
     for line in stdout.lines() {

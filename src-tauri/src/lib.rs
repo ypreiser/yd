@@ -1,7 +1,7 @@
 mod config;
 mod download;
 
-use download::DownloadState;
+use download::{DownloadState, SearchState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +16,7 @@ pub fn run() {
             Ok(())
         })
         .manage(DownloadState::new())
+        .manage(SearchState::new())
         .invoke_handler(tauri::generate_handler![
             config::get_config,
             config::set_config,
@@ -27,6 +28,9 @@ pub fn run() {
             download::get_ytdlp_version,
             download::check_ytdlp_update,
             download::update_ytdlp,
+            download::check_binaries,
+            download::check_disk_space,
+            download::cancel_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

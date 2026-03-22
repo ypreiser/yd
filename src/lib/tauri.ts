@@ -86,6 +86,18 @@ export async function updateYtdlp(): Promise<string> {
   return invoke("update_ytdlp");
 }
 
+export async function checkBinaries(): Promise<string[]> {
+  return invoke("check_binaries");
+}
+
+export async function checkDiskSpace(path: string): Promise<number> {
+  return invoke("check_disk_space", { path });
+}
+
+export async function cancelSearch(): Promise<void> {
+  return invoke("cancel_search");
+}
+
 export function onDownloadProgress(
   callback: (progress: DownloadProgress) => void
 ): Promise<UnlistenFn> {

@@ -4,10 +4,16 @@ import { useT } from "../lib/i18n";
 
 interface DownloadListProps {
   items: DownloadProgress[];
+  onClear?: () => void;
+  onRetry?: (url: string) => void;
 }
 
-export default function DownloadList({ items }: DownloadListProps) {
+export default function DownloadList({ items, onClear, onRetry }: DownloadListProps) {
   const t = useT();
+
+  const hasFinished = items.some(
+    (i) => i.status === "done" || i.status === "error" || i.status === "cancelled"
+  );
 
   if (items.length === 0) {
     return (
@@ -24,8 +30,16 @@ export default function DownloadList({ items }: DownloadListProps) {
 
   return (
     <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+      {hasFinished && onClear && (
+        <button
+          onClick={onClear}
+          className="self-end text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        >
+          {t.clearFinished}
+        </button>
+      )}
       {items.map((item) => (
-        <DownloadItem key={item.id} item={item} />
+        <DownloadItem key={item.id} item={item} onRetry={onRetry} />
       ))}
     </div>
   );

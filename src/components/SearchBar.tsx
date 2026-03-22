@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useT } from "../lib/i18n";
 import type { SearchResult, PlaylistInfo } from "../lib/tauri";
-import { searchYoutube, fetchPlaylist } from "../lib/tauri";
+import { searchYoutube, fetchPlaylist, cancelSearch } from "../lib/tauri";
 import PlaylistModal from "./PlaylistModal";
 
 interface SearchBarProps {
@@ -36,8 +36,17 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
   const [playlistData, setPlaylistData] = useState<PlaylistInfo | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
 
+  async function handleStop() {
+    cancelSearch().catch(() => {});
+    setLoading(false);
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) {
+      handleStop();
+      return;
+    }
     const trimmed = query.trim();
     if (!trimmed) return;
 
@@ -50,7 +59,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       const res = await searchYoutube(trimmed);
       setResults(res);
     } catch (err) {
-      setError(t.searchError);
+      if (loading) setError(t.searchError);
       console.error("search failed:", err);
     } finally {
       setLoading(false);
@@ -91,10 +100,12 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
         />
         <button
           type="submit"
-          disabled={loading || query.trim().length === 0}
-          className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+          disabled={!loading && query.trim().length === 0}
+          className={`rounded-lg px-5 py-2 text-sm font-medium text-white active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap ${
+            loading ? "bg-red-600 hover:bg-red-500" : "bg-indigo-600 hover:bg-indigo-500"
+          }`}
         >
-          {loading ? t.searching : t.search}
+          {loading ? t.stop : t.search}
         </button>
       </form>
 

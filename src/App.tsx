@@ -9,8 +9,10 @@ import {
   downloadBatch,
   onDownloadProgress,
   getConfig,
+  checkDiskSpace,
   checkYtdlpUpdate,
   updateYtdlp,
+  checkBinaries,
 } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import type { Language } from "./lib/i18n";
@@ -21,6 +23,23 @@ type View = "main" | "settings";
 type InputMode = "url" | "search";
 
 type UpdateStatus = "idle" | "available" | "downloading" | "ready";
+
+function BinaryCheckBanner() {
+  const t = useT();
+  const [missing, setMissing] = useState<string[]>([]);
+
+  useEffect(() => {
+    checkBinaries().then((m) => setMissing(m)).catch(() => {});
+  }, []);
+
+  if (missing.length === 0) return null;
+
+  return (
+    <div className="flex items-center px-4 py-2 bg-red-600 text-white text-sm">
+      {t.missingBinaries(missing.join(", "))}
+    </div>
+  );
+}
 
 function UpdateBanner() {
   const t = useT();
@@ -203,9 +222,38 @@ function App() {
 
   const handleSubmit = useCallback(async (urls: string[]) => {
     try {
+      const cfg = await getConfig();
+      const MB_500 = 500 * 1024 * 1024;
+      try {
+        const free = await checkDiskSpace(cfg.download_dir);
+        if (free < MB_500) {
+          const t = getTranslations(cfg.language || "he");
+          if (!window.confirm(t.lowDiskSpace)) return;
+        }
+      } catch { /* ignore disk check failure */ }
       await downloadBatch(urls);
     } catch (e) {
       console.error("download failed:", e);
+    }
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setDownloads((prev) => {
+      const next = new Map(prev);
+      for (const [id, p] of next) {
+        if (p.status === "done" || p.status === "error" || p.status === "cancelled") {
+          next.delete(id);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRetry = useCallback(async (url: string) => {
+    try {
+      await downloadBatch([url]);
+    } catch (e) {
+      console.error("retry failed:", e);
     }
   }, []);
 
@@ -220,6 +268,7 @@ function App() {
   return (
     <I18nContext.Provider value={t}>
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
+        <BinaryCheckBanner />
         <UpdateBanner />
         <Header view={view} setView={setView} />
         <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0">
@@ -257,7 +306,7 @@ function App() {
               ) : (
                 <SearchBar onDownload={handleSubmit} />
               )}
-              <DownloadList items={items} />
+              <DownloadList items={items} onClear={handleClear} onRetry={handleRetry} />
             </>
           )}
         </div>
