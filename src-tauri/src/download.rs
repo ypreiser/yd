@@ -476,8 +476,8 @@ pub async fn download(
         let result = tokio::process::Command::new(&bin_path)
             .env("PYTHONUTF8", "1")
             .args([
-                "--extract-audio",
-                "--audio-format",
+                "-f", "bestaudio",
+                "--recode-video",
                 &config.audio_format,
                 "--newline",
                 "--progress",
@@ -547,7 +547,7 @@ pub async fn download(
 
                     if let Some(caps) = PROGRESS_RE.captures(&line) {
                         if let Ok(pct) = caps[1].parse::<f64>() {
-                            let status = if line.contains("[ExtractAudio]") || line.contains("Post-process") {
+                            let status = if line.contains("[ExtractAudio]") || line.contains("[VideoConvertor]") || line.contains("Post-process") {
                                 "converting"
                             } else {
                                 "downloading"
@@ -567,7 +567,7 @@ pub async fn download(
                         }
                     }
 
-                    if line.contains("[ExtractAudio]") {
+                    if line.contains("[ExtractAudio]") || line.contains("[VideoConvertor]") {
                         app.emit(
                             "download-progress",
                             DownloadProgress {
