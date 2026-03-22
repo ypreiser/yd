@@ -190,33 +190,44 @@ function App() {
   }, [language]);
 
   useEffect(() => {
+    const buffer = new Map<string, DownloadProgress>();
+    let rafId: number | null = null;
     const unlisten = onDownloadProgress((progress) => {
-      setDownloads((prev) => {
-        const next = new Map(prev);
-        next.set(progress.id, progress);
+      buffer.set(progress.id, progress);
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          setDownloads((prev) => {
+            const next = new Map(prev);
+            for (const [, p] of buffer) { next.set(p.id, p); }
+            buffer.clear();
 
-        // Remove finished entries beyond a limit to prevent unbounded growth
-        const MAX_FINISHED = 50;
-        const finished = Array.from(next.entries()).filter(
-          ([, p]) =>
-            p.status === "done" ||
-            p.status === "error" ||
-            p.status === "cancelled",
-        );
-        if (finished.length > MAX_FINISHED) {
-          for (const [id] of finished.slice(
-            0,
-            finished.length - MAX_FINISHED,
-          )) {
-            next.delete(id);
-          }
-        }
+            // Remove finished entries beyond a limit to prevent unbounded growth
+            const MAX_FINISHED = 50;
+            const finished = Array.from(next.entries()).filter(
+              ([, p]) =>
+                p.status === "done" ||
+                p.status === "already_exists" ||
+                p.status === "error" ||
+                p.status === "cancelled",
+            );
+            if (finished.length > MAX_FINISHED) {
+              for (const [id] of finished.slice(
+                0,
+                finished.length - MAX_FINISHED,
+              )) {
+                next.delete(id);
+              }
+            }
 
-        return next;
-      });
+            return next;
+          });
+          rafId = null;
+        });
+      }
     });
     return () => {
       unlisten.then((fn) => fn());
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -241,7 +252,7 @@ function App() {
     setDownloads((prev) => {
       const next = new Map(prev);
       for (const [id, p] of next) {
-        if (p.status === "done" || p.status === "error" || p.status === "cancelled") {
+        if (p.status === "done" || p.status === "already_exists" || p.status === "error" || p.status === "cancelled") {
           next.delete(id);
         }
       }

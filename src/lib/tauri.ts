@@ -14,7 +14,7 @@ export interface DownloadProgress {
   url: string;
   percent: number;
   title: string | null;
-  status: "queued" | "downloading" | "converting" | "done" | "cancelled" | "error";
+  status: "queued" | "downloading" | "converting" | "done" | "cancelled" | "error" | "already_exists";
   error: string | null;
 }
 

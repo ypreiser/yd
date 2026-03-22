@@ -16,6 +16,7 @@ export interface Translations {
   downloading: string;
   converting: string;
   done: string;
+  already_exists: string;
   cancelled: string;
   error: string;
   // settings
@@ -87,6 +88,7 @@ const en: Translations = {
   downloading: "Downloading",
   converting: "Converting",
   done: "Done",
+  already_exists: "Already exists",
   cancelled: "Cancelled",
   error: "Error",
   downloadDir: "Download Directory",
@@ -152,6 +154,7 @@ const he: Translations = {
   downloading: "מוריד",
   converting: "ממיר",
   done: "הושלם",
+  already_exists: "כבר קיים",
   cancelled: "בוטל",
   error: "שגיאה",
   downloadDir: "תיקיית הורדות",

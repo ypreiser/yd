@@ -3,15 +3,11 @@ import { useT } from "../lib/i18n";
 import type { PlaylistInfo } from "../lib/tauri";
 import { fetchPlaylist } from "../lib/tauri";
 import PlaylistModal from "./PlaylistModal";
+import { isPlaylistUrl } from "../lib/youtube";
 
 interface UrlInputProps {
   onSubmit: (urls: string[]) => void;
   disabled?: boolean;
-}
-
-function isPlaylistUrl(url: string): boolean {
-  return /[?&]list=/.test(url) || /\/playlist\?/.test(url)
-    || /\/(channel|c|@)[/\w]/.test(url);
 }
 
 export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {

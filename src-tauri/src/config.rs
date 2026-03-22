@@ -56,7 +56,24 @@ pub fn get_config(app: tauri::AppHandle) -> AppConfig {
     load_config(&app)
 }
 
+const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
+const ALLOWED_THEMES: &[&str] = &["dark", "light"];
+const ALLOWED_LANGUAGES: &[&str] = &["en", "he"];
+
 #[tauri::command]
 pub fn set_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
+    if !ALLOWED_AUDIO_FORMATS.contains(&config.audio_format.as_str()) {
+        return Err(format!("Invalid audio format: {}", config.audio_format));
+    }
+    let dir = std::path::Path::new(&config.download_dir);
+    if !dir.is_absolute() {
+        return Err("Download directory must be an absolute path".to_string());
+    }
+    if !ALLOWED_THEMES.contains(&config.theme.as_str()) {
+        return Err("Invalid theme".to_string());
+    }
+    if !ALLOWED_LANGUAGES.contains(&config.language.as_str()) {
+        return Err("Invalid language".to_string());
+    }
     save_config(&app, &config)
 }

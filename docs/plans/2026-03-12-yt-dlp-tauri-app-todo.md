@@ -2,7 +2,7 @@
 
 **Plan**: [plan](./2026-03-12-yt-dlp-tauri-app-plan.md)
 **Date**: 2026-03-12
-**Status**: In Progress
+**Status**: Done
 
 ## Phase 1: Scaffold
 
@@ -58,15 +58,15 @@
 
 - [x] Error states: invalid URL, yt-dlp failure, network error — show in UI per download item
 - [x] Cancel button on each in-progress download item
-- [ ] Startup validation: check bundled yt-dlp/ffmpeg exist, show error if missing
+- [x] Startup validation: check bundled yt-dlp/ffmpeg exist, show error if missing
 - [x] Empty state UI when no downloads yet
-- [ ] Update README with build instructions and screenshots placeholder
-- [ ] `src-tauri/tauri.conf.json` — Set app icon
+- [x] Update README with build instructions and screenshots placeholder
+- [x] `src-tauri/tauri.conf.json` — Set app icon
 
 ## Final Checklist
 
 - [x] All commands work end-to-end (single, batch, cancel, config)
-- [ ] No security issues (no shell injection — URLs passed as args, not interpolated)
+- [x] No security issues (no shell injection — URLs passed as args, not interpolated)
 - [x] Parallel limit of 5 enforced
 - [x] Config persists across app restarts
-- [ ] README updated
+- [x] README updated

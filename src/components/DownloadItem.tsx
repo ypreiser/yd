@@ -15,6 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
   downloading: "text-indigo-500 dark:text-indigo-400",
   converting: "text-amber-500 dark:text-amber-400",
   done: "text-emerald-500 dark:text-emerald-400",
+  already_exists: "text-amber-500 dark:text-amber-400",
   cancelled: "text-zinc-400 dark:text-zinc-500",
   error: "text-red-500 dark:text-red-400",
 };
@@ -24,6 +25,7 @@ const BAR_COLORS: Record<string, string> = {
   downloading: "bg-indigo-500",
   converting: "bg-amber-500",
   done: "bg-emerald-500",
+  already_exists: "bg-amber-500",
   error: "bg-red-500",
 };
 
@@ -32,6 +34,7 @@ const STATUS_KEYS: Record<string, keyof Translations> = {
   downloading: "downloading",
   converting: "converting",
   done: "done",
+  already_exists: "already_exists",
   cancelled: "cancelled",
   error: "error",
 };
@@ -63,6 +66,9 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
           {item.status === "done" && (
             <span className="animate-check text-emerald-500 text-sm shrink-0">✓</span>
           )}
+          {item.status === "already_exists" && (
+            <span className="text-amber-500 text-sm shrink-0">⚠</span>
+          )}
           {item.status === "error" && (
             <span className="text-red-500 text-sm shrink-0">✕</span>
           )}
@@ -89,7 +95,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
               ✕
             </button>
           )}
-          {item.status === "done" && (
+          {(item.status === "done" || item.status === "already_exists") && (
             <button
               onClick={async () => {
                 try {
@@ -115,6 +121,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
         </div>
       </div>
       {item.status !== "done" &&
+        item.status !== "already_exists" &&
         item.status !== "error" &&
         item.status !== "cancelled" && (
           <div className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">

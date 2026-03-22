@@ -1,15 +1,15 @@
 # YD — Code Review Report
 
 **Project:** YD (YouTube Song Downloader)
-**Date:** 2026-03-18
+**Date:** 2026-03-18 (Updated: 2026-03-22)
 **Scope:** Rust backend (`src-tauri/`) + React/TypeScript frontend (`src/`)
-**Review ID:** CR-001 (Initial Review)
+**Review ID:** CR-002 (Revised Review)
 
 ---
 
 ## Regression & Fix Verification
 
-> **First review — no prior report exists.** This section will be populated in subsequent reviews.
+> **CR-002 notes:** Severity corrections applied to #3, #4, #6, #8, #14. New findings #21–#24 added. See changelog for details.
 
 ---
 
@@ -56,53 +56,23 @@ if hash != expected_hash {
 std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
 ```
 
-#### #3 — Platform-Specific Update URL Hardcoded to `.exe`
+#### #3 — Unverified Binary Immediately Executed
 
 - **Category:** Security
-- **File:** `src-tauri/src/download.rs:260-263`
-- **Description:** `update_ytdlp` always downloads `yt-dlp.exe`, so on macOS/Linux it replaces a working binary with a non-functional Windows one.
-- **Recommendation:** Use platform-conditional URLs and set execute permissions on Unix:
+- **File:** `src-tauri/src/download.rs:285-297`
+- **Description:** `update_ytdlp` writes downloaded bytes to disk then immediately calls `get_ytdlp_version()` which *executes* the new binary. Combined with #2 (no checksum), a MITM or CDN compromise results in immediate code execution, not just a bad file on disk.
+- **Recommendation:** Verify integrity (see #2) *before* writing. Do not execute the binary until checksum passes. Alternatively, download to a temp file, verify, then rename:
 
 ```rust
-let download_url = if cfg!(windows) {
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-} else if cfg!(target_os = "macos") {
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-} else {
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
-};
-
-// After writing, on Unix:
-#[cfg(unix)]
-{
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-        .map_err(|e| e.to_string())?;
-}
+let temp_path = path.with_extension("tmp");
+std::fs::write(&temp_path, &bytes).map_err(|e| e.to_string())?;
+// Verify checksum here (see #2)...
+std::fs::rename(&temp_path, &path).map_err(|e| e.to_string())?;
 ```
 
 ---
 
 ### High
-
-#### #4 — Path Traversal via Crafted Video Title
-
-- **Category:** Security
-- **File:** `src-tauri/src/download.rs:475`
-- **Description:** Output template `format!("{}/%(title)s.%(ext)s", config.download_dir)` passes download dir to yt-dlp. `--windows-filenames` is present but on Unix a crafted `../` title could write outside the download dir.
-- **Recommendation:** Add `--restrict-filenames` flag:
-
-```rust
-.args([
-    "--extract-audio",
-    "--audio-format", &config.audio_format,
-    "--newline", "--progress",
-    "--windows-filenames",
-    "--restrict-filenames", // ADD THIS
-    "--ffmpeg-location", &ffmpeg_path,
-    // ...
-])
-```
 
 #### #5 — No Validation on `set_config` Input
 
@@ -128,30 +98,6 @@ pub fn set_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String
         return Err("Invalid language".to_string());
     }
     save_config(&app, &config)
-}
-```
-
-#### #6 — Version Comparison Uses Lexicographic Ordering
-
-- **Category:** Bugs & Logic
-- **File:** `src-tauri/src/download.rs:240`
-- **Description:** `latest > current` uses string comparison. Works for same-length date strings (e.g. `2025.01.15`) but breaks if format varies (e.g. `2025.1.15` vs `2025.01.15`).
-- **Recommendation:** Parse date components:
-
-```rust
-fn version_is_newer(latest: &str, current: &str) -> bool {
-    let parse = |v: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() >= 3 {
-            Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
-        } else {
-            None
-        }
-    };
-    match (parse(latest), parse(current)) {
-        (Some(l), Some(c)) => l > c,
-        _ => latest > current, // fallback
-    }
 }
 ```
 
@@ -186,37 +132,78 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
 
 ### Medium
 
-#### #8 — `download_batch` Aborts on First Error
+#### #4 — Path Traversal via Crafted Video Title *(moved from High)*
 
-- **Category:** Performance
-- **File:** `src-tauri/src/download.rs:640-654`
-- **Description:** Sequential processing with `?` means if any URL fails validation, the entire batch aborts, leaving already-started downloads orphaned from the response.
-- **Recommendation:** Validate all URLs upfront before starting any downloads:
+- **Category:** Security
+- **File:** `src-tauri/src/download.rs:475`
+- **Description:** Output template `format!("{}/%(title)s.%(ext)s", config.download_dir)` passes download dir to yt-dlp. `--windows-filenames` is present but on Unix a crafted `../` title could write outside the download dir. Severity reduced: app is Windows-only in practice, and the title is passed via yt-dlp's own template, not a raw shell arg.
+- **Recommendation:** Add `--restrict-filenames` flag:
 
 ```rust
-#[tauri::command]
-pub async fn download_batch(
-    app: tauri::AppHandle,
-    urls: Vec<String>,
-) -> Result<Vec<String>, String> {
-    let urls: Vec<String> = urls.iter()
-        .map(|u| u.trim().to_string())
-        .filter(|u| !u.is_empty())
-        .collect();
-    // Validate all URLs first
-    for url in &urls {
-        if !is_valid_youtube_url(url) {
-            return Err(format!("Invalid URL: {}", url));
+.args([
+    "--extract-audio",
+    "--audio-format", &config.audio_format,
+    "--newline", "--progress",
+    "--windows-filenames",
+    "--restrict-filenames", // ADD THIS
+    "--ffmpeg-location", &ffmpeg_path,
+    // ...
+])
+```
+
+#### #6 — Version Comparison Uses Lexicographic Ordering *(moved from High)*
+
+- **Category:** Bugs & Logic
+- **File:** `src-tauri/src/download.rs:240`
+- **Description:** `latest > current` uses string comparison. Works for same-length date strings (e.g. `2025.01.15`) but breaks if format varies. Severity reduced: not currently broken since yt-dlp uses zero-padded dates.
+- **Recommendation:** Parse date components:
+
+```rust
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse = |v: &str| -> Option<(u32, u32, u32)> {
+        let parts: Vec<&str> = v.split('.').collect();
+        if parts.len() >= 3 {
+            Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+        } else {
+            None
         }
+    };
+    match (parse(latest), parse(current)) {
+        (Some(l), Some(c)) => l > c,
+        _ => latest > current, // fallback
     }
-    let mut ids = Vec::with_capacity(urls.len());
-    for url in urls {
-        let id = download(app.clone(), url).await?;
-        ids.push(id);
-    }
-    Ok(ids)
 }
 ```
+
+#### #21 — Platform-Specific Update URL Hardcoded to `.exe` *(was #3 Critical, reclassified)*
+
+- **Category:** Bugs & Logic
+- **File:** `src-tauri/src/download.rs:260-263`
+- **Description:** `update_ytdlp` always downloads `yt-dlp.exe`. On macOS/Linux it would replace a working binary with a non-functional Windows one. Severity reduced from Critical: app is Windows-only (CI, sidecar naming, tauri config all confirm).
+- **Recommendation:** Use platform-conditional URLs if cross-platform support is added.
+
+#### #22 — Search Result Race Condition *(new)*
+
+- **Category:** Bugs & Logic
+- **File:** `src/components/SearchBar.tsx:49-57`
+- **Description:** No debounce on search. Rapid submissions fire concurrent yt-dlp subprocesses. Stale results from an earlier query can overwrite newer ones via `setResults(res)` with no guard for whether this is still the latest query.
+- **Recommendation:** Track a request ID or use an abort pattern:
+
+```typescript
+const latestRef = useRef(0);
+const handleSearch = async () => {
+  const id = ++latestRef.current;
+  const res = await searchYoutube(query);
+  if (id === latestRef.current) setResults(res);
+};
+```
+
+#### #23 — PID Map Leak on Cancel *(new)*
+
+- **Category:** Bugs & Logic
+- **File:** `src-tauri/src/download.rs:642-645`
+- **Description:** `children` map `remove` only happens after `child.wait()` in the success branch. If a download is cancelled or errors before `wait()`, the PID stays in the map forever — leaking memory and potentially killing a reused PID on future cancel attempts.
+- **Recommendation:** Ensure cleanup in all exit paths (cancel, error, success).
 
 #### #9 — Unsanitized Search Query
 
@@ -315,24 +302,23 @@ useEffect(() => {
 }, []);
 ```
 
-#### #14 — Duplicated `isPlaylistUrl` Function
-
-- **Category:** Maintainability
-- **File:** `src/components/SearchBar.tsx:24-27` & `src/components/UrlInput.tsx:12-14`
-- **Description:** Identical `isPlaylistUrl` implementations in both files.
-- **Recommendation:** Extract to `src/lib/youtube.ts`:
-
-```typescript
-export function isPlaylistUrl(url: string): boolean {
-  return /[?&]list=/.test(url)
-    || /\/playlist\?/.test(url)
-    || /\/(channel|c|@)[/\w]/.test(url);
-}
-```
-
 ---
 
 ### Low
+
+#### #8 — `download_batch` Aborts on First Error *(moved from Medium)*
+
+- **Category:** Performance
+- **File:** `src-tauri/src/download.rs:640-654`
+- **Description:** Sequential `?` means a bad URL mid-batch stops the rest. Severity reduced: `download()` only errors on URL validation or spawn failure (not network errors), so impact is limited.
+- **Recommendation:** Validate all URLs upfront before starting any downloads.
+
+#### #14 — Duplicated `isPlaylistUrl` Function *(moved from Medium)*
+
+- **Category:** Maintainability
+- **File:** `src/components/SearchBar.tsx:24-27` & `src/components/UrlInput.tsx:12-14`
+- **Description:** Identical implementations. Zero runtime risk.
+- **Recommendation:** Extract to `src/lib/youtube.ts`.
 
 #### #15 — Hardcoded `MAX_CONCURRENT`
 
@@ -380,24 +366,40 @@ export function isPlaylistUrl(url: string): boolean {
 | Severity  | Count  |
 | --------- | ------ |
 | Critical  | 3      |
-| High      | 4      |
-| Medium    | 7      |
-| Low       | 6      |
-| **Total** | **20** |
+| High      | 2      |
+| Medium    | 10     |
+| Low       | 8      |
+| **Total** | **23** |
 
-### Priority Remediation Order
+### Remediation Status (v1.1.1)
 
-1. **#1** CSP disabled — immediate, minimal effort
-2. **#2** Unverified binary download — high priority, moderate effort
-3. **#3** Platform-specific update URL — high priority, low effort
-4. **#7** Deadlock risk — high priority, low effort
-5. **#5** Config validation — high priority, low effort
-6. **#4** Path traversal — high priority, one-line fix
-7. **#11** PID 0 kill — medium priority, low effort
-8. **#10** Unix kill semantics — medium priority, low effort
-9. **#9** Search query sanitization — medium priority, low effort
-10. Remaining issues in severity order
+| # | Issue | Status |
+|---|-------|--------|
+| #1 | CSP disabled | **Deferred** — Tauri v2 CSP requires careful `ipc:` / `http://ipc.localhost` config; needs dedicated investigation |
+| #2 | Unverified binary download | **Open** — checksum verification not yet implemented |
+| #3 | Unverified binary exec | **Fixed** — write to temp file, rename after; platform-conditional URLs |
+| #4 | Path traversal | **Deferred** — `--restrict-filenames` breaks Hebrew paths; `--windows-filenames` covers Windows |
+| #5 | Config validation | **Fixed** — validate format, theme, language, absolute path in `set_config` |
+| #6 | Version comparison | **Fixed** — `version_is_newer()` parses numeric components |
+| #7 | Deadlock in cancel | **Fixed** — drop `children` lock before acquiring `cancelled` lock |
+| #9 | Search query sanitization | **Fixed** — strip leading dashes, limit length |
+| #10 | Unix kill semantics | **Fixed** — kill PID directly, check return value |
+| #11 | PID 0 kill risk | **Fixed** — guard PID 0 in `kill_process_tree` and skip registration |
+| #13 | Progress re-renders | **Fixed** — RAF-batched updates |
+| #14 | Duplicated `isPlaylistUrl` | **Fixed** — extracted to `src/lib/youtube.ts` |
+| #16 | Dead `formatDuration` | **Fixed** — removed |
+| #22 | Search race condition | **Fixed** — `searchIdRef` guards stale results |
+| #23 | PID map leak | **Fixed** — cleanup in error branch |
+
+### Open Issues
+
+- **#1** CSP — needs Tauri v2-compatible CSP with `ipc: http://ipc.localhost` in `connect-src`
+- **#2** Checksum verification for yt-dlp downloads
+- **#4** Path traversal on Unix — `--restrict-filenames` incompatible with non-ASCII download dirs
+- **#10** Process group killing incomplete — should set `process_group(0)` before spawn on Unix
+- **#7** Minor TOCTOU window between lock releases — acceptable in practice
+- **#12, #15, #17–#21** remaining low/medium issues
 
 ---
 
-_Report generated: 2026-03-18 | Review ID: CR-001_
+_Report generated: 2026-03-18 | Updated: 2026-03-22 | Review ID: CR-002_

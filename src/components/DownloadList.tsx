@@ -12,7 +12,7 @@ export default function DownloadList({ items, onClear, onRetry }: DownloadListPr
   const t = useT();
 
   const hasFinished = items.some(
-    (i) => i.status === "done" || i.status === "error" || i.status === "cancelled"
+    (i) => i.status === "done" || i.status === "already_exists" || i.status === "error" || i.status === "cancelled"
   );
 
   if (items.length === 0) {

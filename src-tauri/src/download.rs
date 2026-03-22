@@ -210,6 +210,9 @@ impl SearchState {
 }
 
 fn kill_process_tree(pid: u32) -> Result<(), String> {
+    if pid == 0 {
+        return Ok(());
+    }
     #[cfg(windows)]
     {
         std::process::Command::new("taskkill")
@@ -219,11 +222,27 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
     }
     #[cfg(unix)]
     {
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGTERM);
+        let ret = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+        if ret != 0 {
+            return Err(format!("kill failed: {}", std::io::Error::last_os_error()));
         }
     }
     Ok(())
+}
+
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse = |v: &str| -> Option<(u32, u32, u32)> {
+        let parts: Vec<&str> = v.split('.').collect();
+        if parts.len() >= 3 {
+            Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+        } else {
+            None
+        }
+    };
+    match (parse(latest), parse(current)) {
+        (Some(l), Some(c)) => l > c,
+        _ => latest > current,
+    }
 }
 
 fn is_valid_youtube_url(url: &str) -> bool {
@@ -326,7 +345,7 @@ pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo
         .unwrap_or("")
         .to_string();
 
-    let update_available = !latest.is_empty() && latest > current;
+    let update_available = !latest.is_empty() && version_is_newer(&latest, &current);
 
     Ok(YtdlpUpdateInfo {
         current,
@@ -337,9 +356,17 @@ pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo
 
 #[tauri::command]
 pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
-    // Download to app data dir so path is always consistent
     let app_data = app.path().app_data_dir().expect("no app data dir");
     std::fs::create_dir_all(&app_data).ok();
+
+    let download_url = if cfg!(windows) {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    } else if cfg!(target_os = "macos") {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+    } else {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    };
+
     let path = if cfg!(windows) {
         app_data.join("yt-dlp.exe")
     } else {
@@ -348,7 +375,7 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 
     let client = reqwest::Client::new();
     let bytes = client
-        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe")
+        .get(download_url)
         .header("User-Agent", "yd-app")
         .send()
         .await
@@ -357,9 +384,20 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    // Write to temp file first, then rename — don't execute unverified binary
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, &bytes).map_err(|e| e.to_string())?;
 
-    // Verify new binary works — now ytdlp_path() will find the local copy
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+
+    std::fs::rename(&temp_path, &path).map_err(|e| e.to_string())?;
+
+    // Verify new binary works
     get_ytdlp_version(app).await
 }
 
@@ -387,6 +425,11 @@ pub async fn search_youtube(
         }
     }
 
+    let query = query.trim().to_string();
+    if query.is_empty() || query.len() > 200 {
+        return Err("Invalid search query".to_string());
+    }
+    let query = query.trim_start_matches('-');
     let search_query = format!("ytsearch10:{}", query);
 
     let child = tokio::process::Command::new(ytdlp_path(&app))
@@ -627,7 +670,7 @@ pub async fn download(
         match result {
             Ok(mut child) => {
                 let pid = child.id().unwrap_or(0);
-                {
+                if pid != 0 {
                     let mut map = children.lock().await;
                     map.insert(id_clone.clone(), pid);
                 }
@@ -662,12 +705,17 @@ pub async fn download(
 
                 let mut title: Option<String> = None;
                 let mut last_stderr = String::new();
+                let mut already_exists = false;
 
                 while let Some((is_stderr, line)) = rx.recv().await {
                     let line = line.trim().to_string();
 
                     if is_stderr && !line.is_empty() {
                         last_stderr = line.clone();
+                    }
+
+                    if line.contains("has already been downloaded") {
+                        already_exists = true;
                     }
 
                     if title.is_none() {
@@ -721,6 +769,8 @@ pub async fn download(
 
                 let (status, error): (String, Option<String>) = if was_cancelled {
                     ("cancelled".to_string(), None)
+                } else if success && already_exists {
+                    ("already_exists".to_string(), None)
                 } else if success {
                     ("done".to_string(), None)
                 } else {
@@ -754,6 +804,8 @@ pub async fn download(
             }
             Err(e) => {
                 let err_str = e.to_string();
+                // Clean up PID map in case it was inserted
+                children.lock().await.remove(&id_clone);
                 app.emit(
                     "download-progress",
                     DownloadProgress {
@@ -793,11 +845,14 @@ pub async fn download_batch(
 #[tauri::command]
 pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<DownloadState>();
-    let children = state.children.clone();
-    let map = children.lock().await;
-    if let Some(pid) = map.get(&id) {
+    // Get PID then drop lock before acquiring cancelled lock (avoid deadlock)
+    let pid = {
+        let map = state.children.lock().await;
+        map.get(&id).copied()
+    };
+    if let Some(pid) = pid {
         state.cancelled.lock().await.insert(id);
-        kill_process_tree(*pid)?;
+        kill_process_tree(pid)?;
         Ok(())
     } else {
         Err("download not found or already finished".to_string())

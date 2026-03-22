@@ -11,7 +11,11 @@ Tauri v2 desktop app for downloading YouTube songs as audio files using yt-dlp.
 - Progress tracking per download
 - Bundled yt-dlp + ffmpeg (no external dependencies)
 
-## Setup
+## Install
+
+Download the latest installer from [Releases](https://github.com/ypreiser/yd/releases/latest). Everything is bundled — no extra setup needed.
+
+## Development
 
 ### Prerequisites
 
@@ -24,7 +28,7 @@ Tauri v2 desktop app for downloading YouTube songs as audio files using yt-dlp.
 Place these in `src-tauri/binaries/`:
 
 1. **yt-dlp**: Download from [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases/latest) → `yt-dlp.exe` → rename to `yt-dlp-x86_64-pc-windows-msvc.exe`
-2. **ffmpeg**: Download from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) → extract `ffmpeg.exe` → rename to `ffmpeg-x86_64-pc-windows-msvc.exe`
+2. **ffmpeg + ffprobe**: Download from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) → extract `ffmpeg.exe` and `ffprobe.exe` → rename to `ffmpeg-x86_64-pc-windows-msvc.exe` and `ffprobe-x86_64-pc-windows-msvc.exe`
 
 ### Build & run
 
@@ -33,6 +37,10 @@ npm install
 npm run tauri dev    # development
 npm run tauri build  # production (outputs MSI + NSIS installer)
 ```
+
+## Screenshots
+
+<!-- TODO: Add screenshots -->
 
 ## Tech Stack
 

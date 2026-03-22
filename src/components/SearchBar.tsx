@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useT } from "../lib/i18n";
 import type { SearchResult, PlaylistInfo } from "../lib/tauri";
 import { searchYoutube, fetchPlaylist, cancelSearch } from "../lib/tauri";
 import PlaylistModal from "./PlaylistModal";
+import { isPlaylistUrl } from "../lib/youtube";
 
 interface SearchBarProps {
   onDownload: (urls: string[]) => void;
@@ -21,11 +22,6 @@ function SkeletonCard() {
   );
 }
 
-function isPlaylistUrl(url: string): boolean {
-  return /[?&]list=/.test(url) || /\/playlist\?/.test(url)
-    || /\/(channel|c|@)[/\w]/.test(url);
-}
-
 export default function SearchBar({ onDownload }: SearchBarProps) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -35,6 +31,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
   const [hasSearched, setHasSearched] = useState(false);
   const [playlistData, setPlaylistData] = useState<PlaylistInfo | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  const searchIdRef = useRef(0);
 
   async function handleStop() {
     cancelSearch().catch(() => {});
@@ -50,6 +47,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
     const trimmed = query.trim();
     if (!trimmed) return;
 
+    const id = ++searchIdRef.current;
     setLoading(true);
     setError(null);
     setResults([]);
@@ -57,12 +55,12 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
 
     try {
       const res = await searchYoutube(trimmed);
-      setResults(res);
+      if (id === searchIdRef.current) setResults(res);
     } catch (err) {
-      if (loading) setError(t.searchError);
+      if (id === searchIdRef.current) setError(t.searchError);
       console.error("search failed:", err);
     } finally {
-      setLoading(false);
+      if (id === searchIdRef.current) setLoading(false);
     }
   }
 
@@ -81,11 +79,6 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       return;
     }
     onDownload([url]);
-  }
-
-  function formatDuration(d: string): string {
-    if (!d) return "";
-    return d;
   }
 
   return (
@@ -137,7 +130,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
                   {result.channel}
-                  {result.duration && ` · ${formatDuration(result.duration)}`}
+                  {result.duration && ` · ${result.duration}`}
                 </p>
               </div>
               <button
