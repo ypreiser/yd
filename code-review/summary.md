@@ -376,7 +376,7 @@ useEffect(() => {
 | # | Issue | Status |
 |---|-------|--------|
 | #1 | CSP disabled | **Deferred** — Tauri v2 CSP requires careful `ipc:` / `http://ipc.localhost` config; needs dedicated investigation |
-| #2 | Unverified binary download | **Open** — checksum verification not yet implemented |
+| #2 | Unverified binary download | **Fixed** — SHA-256 checksum verified against `SHA2-256SUMS` from release |
 | #3 | Unverified binary exec | **Fixed** — write to temp file, rename after; platform-conditional URLs |
 | #4 | Path traversal | **Deferred** — `--restrict-filenames` breaks Hebrew paths; `--windows-filenames` covers Windows |
 | #5 | Config validation | **Fixed** — validate format, theme, language, absolute path in `set_config` |
@@ -394,7 +394,7 @@ useEffect(() => {
 ### Open Issues
 
 - **#1** CSP — needs Tauri v2-compatible CSP with `ipc: http://ipc.localhost` in `connect-src`
-- **#2** Checksum verification for yt-dlp downloads
+- ~~**#2** Checksum verification~~ — fixed in v1.1.1
 - **#4** Path traversal on Unix — `--restrict-filenames` incompatible with non-ASCII download dirs
 - **#10** Process group killing incomplete — should set `process_group(0)` before spawn on Unix
 - **#7** Minor TOCTOU window between lock releases — acceptable in practice

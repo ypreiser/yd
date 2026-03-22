@@ -359,12 +359,12 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     let app_data = app.path().app_data_dir().expect("no app data dir");
     std::fs::create_dir_all(&app_data).ok();
 
-    let download_url = if cfg!(windows) {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    let (download_url, binary_name) = if cfg!(windows) {
+        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", "yt-dlp.exe")
     } else if cfg!(target_os = "macos") {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos", "yt-dlp_macos")
     } else {
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", "yt-dlp")
     };
 
     let path = if cfg!(windows) {
@@ -374,6 +374,26 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     };
 
     let client = reqwest::Client::new();
+
+    // Fetch SHA256 checksums from release
+    let checksums_text = client
+        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS")
+        .header("User-Agent", "yd-app")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let expected_hash = checksums_text
+        .lines()
+        .find(|line| line.ends_with(binary_name))
+        .and_then(|line| line.split_whitespace().next())
+        .ok_or_else(|| format!("Checksum not found for {}", binary_name))?
+        .to_string();
+
+    // Download binary
     let bytes = client
         .get(download_url)
         .header("User-Agent", "yd-app")
@@ -384,7 +404,17 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    // Write to temp file first, then rename — don't execute unverified binary
+    // Verify checksum before writing
+    use sha2::{Sha256, Digest};
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    if hash != expected_hash {
+        return Err(format!(
+            "Checksum mismatch: expected {} got {}",
+            expected_hash, hash
+        ));
+    }
+
+    // Write to temp file, then rename
     let temp_path = path.with_extension("tmp");
     std::fs::write(&temp_path, &bytes).map_err(|e| e.to_string())?;
 

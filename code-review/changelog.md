@@ -8,6 +8,7 @@
 
 | # | Issue | Fix |
 |---|-------|-----|
+| #2 | Unverified binary download | SHA-256 checksum verified against `SHA2-256SUMS` from GitHub release |
 | #3 | Unverified binary exec | Write to temp, rename; platform-conditional URLs; Unix permissions |
 | #5 | Config validation | Validate format, theme, language, absolute path in `set_config` |
 | #6 | Version comparison | `version_is_newer()` parses numeric date components |
@@ -26,7 +27,7 @@
 | # | Issue | Reason |
 |---|-------|--------|
 | #1 | CSP | Tauri v2 requires `ipc: http://ipc.localhost` in `connect-src`; needs dedicated investigation |
-| #2 | Checksum verification | Requires fetching + parsing GitHub release checksums |
+| ~~#2~~ | ~~Checksum verification~~ | Fixed — SHA-256 verification implemented |
 | #4 | Path traversal | `--restrict-filenames` breaks non-ASCII download directory paths |
 
 ### Files Changed
