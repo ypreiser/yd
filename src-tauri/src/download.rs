@@ -22,7 +22,7 @@ const MAX_CONCURRENT: usize = 5;
 // --- yt-dlp path resolution ---
 
 fn ytdlp_path(app: &tauri::AppHandle) -> PathBuf {
-    // Prefer user-updated binary in app data dir
+    // 1. Prefer user-updated binary in app data dir
     let app_data = app.path().app_data_dir().expect("no app data dir");
     let local = if cfg!(windows) {
         app_data.join("yt-dlp.exe")
@@ -33,9 +33,41 @@ fn ytdlp_path(app: &tauri::AppHandle) -> PathBuf {
         return local;
     }
 
-    // Fall back to bundled sidecar (next to exe)
+    // 2. Bundled sidecar with target triple (dev mode)
     let exe = std::env::current_exe().expect("no exe path");
     let dir = exe.parent().expect("no parent dir");
+    if cfg!(windows) {
+        let with_triple = dir.join("yt-dlp-x86_64-pc-windows-msvc.exe");
+        if with_triple.exists() {
+            return with_triple;
+        }
+        // 3. Sidecar without triple (installed mode)
+        let without_triple = dir.join("yt-dlp.exe");
+        if without_triple.exists() {
+            return without_triple;
+        }
+    } else {
+        let p = dir.join("yt-dlp");
+        if p.exists() {
+            return p;
+        }
+    }
+
+    // 4. System PATH fallback
+    let cmd = if cfg!(windows) { "where" } else { "which" };
+    if let Ok(output) = std::process::Command::new(cmd).arg("yt-dlp").output() {
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = s.trim().lines().next() {
+                let p = PathBuf::from(line);
+                if p.exists() {
+                    return p;
+                }
+            }
+        }
+    }
+
+    // Return expected path (will fail exists() check)
     if cfg!(windows) {
         dir.join("yt-dlp-x86_64-pc-windows-msvc.exe")
     } else {
