@@ -27,6 +27,25 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Download sidecar binaries (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          # yt-dlp
+          curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          # ffmpeg + ffprobe from gyan.dev (release essentials)
+          curl -L -o ffmpeg.zip \
+            https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+          7z x ffmpeg.zip -offmpeg_tmp -y
+          cp ffmpeg_tmp/ffmpeg-*-essentials_build/bin/ffmpeg.exe \
+            src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe
+          cp ffmpeg_tmp/ffmpeg-*-essentials_build/bin/ffprobe.exe \
+            src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe
+          rm -rf ffmpeg.zip ffmpeg_tmp
+          ls -la src-tauri/binaries/
+
       - run: npm install
 
       - uses: tauri-apps/tauri-action@v0
