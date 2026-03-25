@@ -4,11 +4,11 @@ Performance
 
 UX Quick Wins
 
-- [ ] Drag & drop URLs - Let users drop text/URLs onto the window instead of only paste.
-- [ ] "Open folder" button - After download completes, a button to open the download directory (you already have tauri-plugin-opener).
-- [ ] Clear finished downloads - A "Clear all" button for completed items, rather than just the silent 50-item cap.
-- [ ] Download error retry - A retry button on failed downloads.
-- [ ] Paste button - One-click paste from clipboard next to the URL input (useful on some platforms where paste shortcuts are awkward).
+- [x] Drag & drop URLs - Let users drop text/URLs onto the window instead of only paste.
+- [x] "Open folder" button - After download completes, a button to open the download directory (you already have tauri-plugin-opener).
+- [x] Clear finished downloads - A "Clear all" button for completed items, rather than just the silent 50-item cap.
+- [x] Download error retry - A retry button on failed downloads.
+- [x] Paste button - One-click paste from clipboard next to the URL input (useful on some platforms where paste shortcuts are awkward).
 
 Features Worth Adding
 
@@ -16,7 +16,7 @@ Features Worth Adding
 - [ ] Notification on completion - System notification when a batch finishes (Tauri supports this natively).
 - [ ] Audio preview - Play a short preview from search results before downloading.
 - [ ] add open in browser btn
-- [ ] add user config of: title, thumbnail, metadata, HE flip - "שלום world" -> "םולש world"
+- [x] add user config of: title, thumbnail, metadata, HE flip - "שלום world" -> "םולש world"
 
 Robustness
 

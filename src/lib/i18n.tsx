@@ -73,6 +73,10 @@ export interface Translations {
   retry: string;
   lowDiskSpace: string;
   stop: string;
+  embedTitle: string;
+  embedThumbnail: string;
+  flipHebrewInTitle: string;
+  metadata: string;
 }
 
 const en: Translations = {
@@ -139,6 +143,10 @@ const en: Translations = {
   retry: "Retry",
   lowDiskSpace: "Low disk space in download directory. Continue anyway?",
   stop: "Stop",
+  embedTitle: "Embed Title",
+  embedThumbnail: "Embed Thumbnail",
+  flipHebrewInTitle: "Flip Hebrew in Title",
+  metadata: "Metadata",
 };
 
 const he: Translations = {
@@ -205,6 +213,10 @@ const he: Translations = {
   retry: "נסה שוב",
   lowDiskSpace: "מקום נמוך בדיסק בתיקיית ההורדות. להמשיך בכל זאת?",
   stop: "עצור",
+  embedTitle: "הטמע כותרת",
+  embedThumbnail: "הטמע תמונה ממוזערת",
+  flipHebrewInTitle: "הפוך עברית בכותרת",
+  metadata: "מטא-דאטה",
 };
 
 const locales: Record<Language, Translations> = { en, he };

@@ -11,6 +11,9 @@ pub struct AppConfig {
     pub theme: String,
     pub language: String,
     pub auto_update: bool,
+    pub embed_title: bool,
+    pub embed_thumbnail: bool,
+    pub flip_hebrew_in_title: bool,
 }
 
 impl Default for AppConfig {
@@ -25,6 +28,9 @@ impl Default for AppConfig {
             theme: "dark".to_string(),
             language: "he".to_string(),
             auto_update: false,
+            embed_title: false,
+            embed_thumbnail: false,
+            flip_hebrew_in_title: false,
         }
     }
 }

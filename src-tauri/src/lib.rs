@@ -1,5 +1,6 @@
 mod config;
 mod download;
+mod hebrew;
 
 use download::{DownloadState, SearchState};
 

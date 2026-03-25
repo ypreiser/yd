@@ -16,6 +16,7 @@ static PROGRESS_RE: LazyLock<Regex> =
 const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
 
 use crate::config::load_config;
+use crate::hebrew::{contains_hebrew, reverse_hebrew};
 
 const MAX_CONCURRENT: usize = 5;
 
@@ -79,6 +80,66 @@ fn ffmpeg_location() -> String {
     let exe = std::env::current_exe().expect("no exe path");
     let exe_dir = exe.parent().expect("no parent dir");
     exe_dir.to_string_lossy().to_string()
+}
+
+/// Write title metadata into audio file via ffmpeg codec copy.
+/// If flip_hebrew is true, reverses Hebrew character runs in the title.
+async fn embed_title_tag(
+    file_path: &std::path::Path,
+    title: &str,
+    ffmpeg_dir: &str,
+    flip_hebrew: bool,
+) -> Result<(), String> {
+    let final_title = if flip_hebrew && contains_hebrew(title) {
+        reverse_hebrew(title)
+    } else {
+        title.to_string()
+    };
+
+    let ffmpeg_bin = if cfg!(windows) {
+        let with_triple = std::path::Path::new(ffmpeg_dir).join("ffmpeg-x86_64-pc-windows-msvc.exe");
+        if with_triple.exists() {
+            with_triple
+        } else {
+            std::path::Path::new(ffmpeg_dir).join("ffmpeg.exe")
+        }
+    } else {
+        std::path::Path::new(ffmpeg_dir).join("ffmpeg")
+    };
+
+    let ext = file_path.extension().unwrap_or_default().to_string_lossy();
+    let temp_path = file_path.with_extension(format!("tmp_meta.{}", ext));
+
+    let output = tokio::process::Command::new(&ffmpeg_bin)
+        .args([
+            "-nostdin",
+            "-i",
+            &file_path.to_string_lossy(),
+            "-metadata",
+            &format!("title={}", final_title),
+            "-codec",
+            "copy",
+            "-y",
+            &temp_path.to_string_lossy(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("ffmpeg failed to start: {}", e))?;
+
+    if !output.status.success() {
+        // Clean up temp file on failure
+        let _ = std::fs::remove_file(&temp_path);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg metadata write failed: {}", stderr));
+    }
+
+    std::fs::rename(&temp_path, file_path)
+        .map_err(|e| format!("failed to rename temp file: {}", e))?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -709,8 +770,12 @@ pub async fn download(
         .ok();
 
         let output_template = format!("{}/%(title)s.%(ext)s", config.download_dir);
-        let result = tokio::process::Command::new(&bin_path)
-            .env("PYTHONUTF8", "1")
+        let mut cmd = tokio::process::Command::new(&bin_path);
+        cmd.env("PYTHONUTF8", "1");
+        if config.embed_thumbnail {
+            cmd.arg("--embed-thumbnail");
+        }
+        let result = cmd
             .args([
                 "-f", "bestaudio",
                 "--recode-video",
@@ -721,6 +786,7 @@ pub async fn download(
                 "--ffmpeg-location",
                 &ffmpeg_path,
                 "--print", "before_dl:YTDL_TITLE:%(title)s",
+                "--print", "after_move:YTDL_FILEPATH:%(filepath)s",
                 "-o",
                 &output_template,
                 &url_clone,
@@ -766,6 +832,7 @@ pub async fn download(
                 });
 
                 let mut title: Option<String> = None;
+                let mut filepath: Option<String> = None;
                 let mut last_stderr = String::new();
                 let mut already_exists = false;
 
@@ -783,6 +850,12 @@ pub async fn download(
                     if title.is_none() {
                         if let Some(t) = line.strip_prefix("YTDL_TITLE:") {
                             title = Some(t.to_string());
+                        }
+                    }
+
+                    if filepath.is_none() {
+                        if let Some(p) = line.strip_prefix("YTDL_FILEPATH:") {
+                            filepath = Some(p.to_string());
                         }
                     }
 
@@ -828,6 +901,26 @@ pub async fn download(
                 let was_cancelled = cancelled.lock().await.remove(&id_clone);
                 let success = exit.as_ref().map(|s| s.success()).unwrap_or(false);
                 let exit_code = exit.ok().and_then(|s: std::process::ExitStatus| s.code());
+
+                // Post-process: embed title tag via ffmpeg
+                if success && !already_exists && config.embed_title {
+                    if let Some(ref t) = title {
+                        let file_path = filepath.as_ref()
+                            .map(|p| PathBuf::from(p))
+                            .unwrap_or_else(|| PathBuf::from(&config.download_dir)
+                                .join(format!("{}.{}", t, &config.audio_format)));
+                        if file_path.exists() {
+                            if let Err(e) = embed_title_tag(
+                                &file_path,
+                                t,
+                                &ffmpeg_path,
+                                config.flip_hebrew_in_title,
+                            ).await {
+                                eprintln!("embed_title_tag failed: {}", e);
+                            }
+                        }
+                    }
+                }
 
                 let (status, error): (String, Option<String>) = if was_cancelled {
                     ("cancelled".to_string(), None)

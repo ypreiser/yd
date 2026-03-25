@@ -7,6 +7,9 @@ export interface AppConfig {
   theme: "dark" | "light";
   language: "en" | "he";
   auto_update: boolean;
+  embed_title: boolean;
+  embed_thumbnail: boolean;
+  flip_hebrew_in_title: boolean;
 }
 
 export interface DownloadProgress {

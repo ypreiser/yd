@@ -190,44 +190,46 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    const buffer = new Map<string, DownloadProgress>();
-    let rafId: number | null = null;
-    const unlisten = onDownloadProgress((progress) => {
-      buffer.set(progress.id, progress);
-      if (!rafId) {
-        rafId = requestAnimationFrame(() => {
-          setDownloads((prev) => {
-            const next = new Map(prev);
-            for (const [, p] of buffer) { next.set(p.id, p); }
-            buffer.clear();
+    let ignore = false;
+    let cleanup: (() => void) | undefined;
 
-            // Remove finished entries beyond a limit to prevent unbounded growth
-            const MAX_FINISHED = 50;
-            const finished = Array.from(next.entries()).filter(
-              ([, p]) =>
-                p.status === "done" ||
-                p.status === "already_exists" ||
-                p.status === "error" ||
-                p.status === "cancelled",
-            );
-            if (finished.length > MAX_FINISHED) {
-              for (const [id] of finished.slice(
-                0,
-                finished.length - MAX_FINISHED,
-              )) {
-                next.delete(id);
-              }
-            }
+    onDownloadProgress((progress) => {
+      if (ignore) return;
+      setDownloads((prev) => {
+        const next = new Map(prev);
+        next.set(progress.id, progress);
 
-            return next;
-          });
-          rafId = null;
-        });
+        // Remove finished entries beyond a limit to prevent unbounded growth
+        const MAX_FINISHED = 50;
+        const finished = Array.from(next.entries()).filter(
+          ([, p]) =>
+            p.status === "done" ||
+            p.status === "already_exists" ||
+            p.status === "error" ||
+            p.status === "cancelled",
+        );
+        if (finished.length > MAX_FINISHED) {
+          for (const [id] of finished.slice(
+            0,
+            finished.length - MAX_FINISHED,
+          )) {
+            next.delete(id);
+          }
+        }
+
+        return next;
+      });
+    }).then((unlisten) => {
+      if (ignore) {
+        unlisten();
+      } else {
+        cleanup = unlisten;
       }
     });
+
     return () => {
-      unlisten.then((fn) => fn());
-      if (rafId) cancelAnimationFrame(rafId);
+      ignore = true;
+      cleanup?.();
     };
   }, []);
 

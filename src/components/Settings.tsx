@@ -176,6 +176,59 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           </div>
         </Section>
 
+        {/* Metadata */}
+        <Section>
+          {/* Embed Title */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.metadata}
+            </label>
+            <div className="flex gap-2">
+              {([
+                { key: "embed_title" as const, label: t.embedTitle },
+                { key: "embed_thumbnail" as const, label: t.embedThumbnail },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() =>
+                    setLocalConfig({ ...config, [key]: !config[key] })
+                  }
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config[key]
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Flip Hebrew */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <button
+                onClick={() =>
+                  config.embed_title &&
+                  setLocalConfig({
+                    ...config,
+                    flip_hebrew_in_title: !config.flip_hebrew_in_title,
+                  })
+                }
+                disabled={!config.embed_title}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                  config.flip_hebrew_in_title && config.embed_title
+                    ? "border-indigo-500 bg-indigo-600 text-white"
+                    : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                } ${!config.embed_title ? "opacity-40 cursor-not-allowed" : ""}`}
+              >
+                {t.flipHebrewInTitle}
+              </button>
+            </div>
+          </div>
+        </Section>
+
         {/* Updates */}
         <Section>
           {/* Auto Update */}
