@@ -20,7 +20,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
   const [dragOver, setDragOver] = useState(false);
 
   function extractUrls(input: string): string[] {
-    const ytRegex = /https?:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+|(?:channel|c)\/[^\s?]+|@[^\s?/]+(?:\/[^\s?]*)?)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
+    const ytRegex = /https:\/\/(?:www\.)?(?:(?:music\.)?youtube\.com\/(?:watch\?[^\s]+|shorts\/[^\s?]+|playlist\?[^\s]+|(?:channel|c)\/[^\s?]+|@[^\s?/]+(?:\/[^\s?]*)?)|youtu\.be\/[^\s?]+)(?:\?[^\s]*)?/gi;
     const matches = input.match(ytRegex);
     if (!matches) return [];
     const seen = new Set<string>();
@@ -109,6 +109,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
             if (dropped) setText((prev) => prev ? `${prev}\n${dropped}` : dropped);
           }}
           placeholder={t.urlPlaceholder}
+          aria-label={t.urlPlaceholder}
           rows={3}
           disabled={disabled || playlistLoading}
           className={`w-full rounded-lg border bg-white dark:bg-zinc-800 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none transition-all ${
@@ -130,6 +131,7 @@ export default function UrlInput({ onSubmit, disabled }: UrlInputProps) {
             } catch { /* clipboard denied */ }
           }}
           disabled={disabled || playlistLoading}
+          aria-label={t.paste}
           className="rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
         >
           {t.paste}

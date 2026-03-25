@@ -229,17 +229,22 @@ fn decode_output(bytes: &[u8]) -> String {
 
         const CP_ACP: u32 = 0;
 
+        let src_len = match i32::try_from(bytes.len()) {
+            Ok(n) => n,
+            Err(_) => return String::from_utf8_lossy(bytes).to_string(),
+        };
+
         unsafe {
             let wide_len = MultiByteToWideChar(
                 CP_ACP, 0,
-                bytes.as_ptr(), bytes.len() as i32,
+                bytes.as_ptr(), src_len,
                 std::ptr::null_mut(), 0,
             );
             if wide_len > 0 {
                 let mut wide = vec![0u16; wide_len as usize];
                 MultiByteToWideChar(
                     CP_ACP, 0,
-                    bytes.as_ptr(), bytes.len() as i32,
+                    bytes.as_ptr(), src_len,
                     wide.as_mut_ptr(), wide_len,
                 );
                 return OsString::from_wide(&wide).to_string_lossy().to_string();
@@ -332,11 +337,15 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        std::process::Command::new("taskkill")
+        let output = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
+            .output()
             .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("taskkill failed: {}", stderr));
+        }
     }
     #[cfg(unix)]
     {
@@ -365,14 +374,13 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
 
 fn is_valid_youtube_url(url: &str) -> bool {
     let url = url.trim();
+    if url.len() > 2048 {
+        return false;
+    }
     url.starts_with("https://www.youtube.com/")
-        || url.starts_with("http://www.youtube.com/")
         || url.starts_with("https://youtube.com/")
-        || url.starts_with("http://youtube.com/")
         || url.starts_with("https://youtu.be/")
-        || url.starts_with("http://youtu.be/")
         || url.starts_with("https://music.youtube.com/")
-        || url.starts_with("http://music.youtube.com/")
 }
 
 // --- Disk space ---
@@ -532,18 +540,23 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
         ));
     }
 
-    // Write to temp file, then rename
+    // Write to temp file, then rename (clean up temp on any error)
     let temp_path = path.with_extension("tmp");
     std::fs::write(&temp_path, &bytes).map_err(|e| e.to_string())?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| e.to_string())?;
+        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755)) {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(e.to_string());
+        }
     }
 
-    std::fs::rename(&temp_path, &path).map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::rename(&temp_path, &path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(e.to_string());
+    }
 
     // Verify new binary works
     get_ytdlp_version(app).await

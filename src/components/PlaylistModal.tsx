@@ -51,15 +51,21 @@ export default function PlaylistModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="playlist-modal-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
       }}
     >
       <div className="animate-slide-up w-full max-w-lg mx-4 max-h-[80vh] flex flex-col rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+            <h2 id="playlist-modal-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
               {playlist.title || t.playlist}
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
@@ -68,6 +74,7 @@ export default function PlaylistModal({
           </div>
           <button
             onClick={onClose}
+            aria-label={t.close}
             className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 transition-colors text-lg px-1"
           >
             ✕

@@ -35,7 +35,7 @@ function BinaryCheckBanner() {
   if (missing.length === 0) return null;
 
   return (
-    <div className="flex items-center px-4 py-2 bg-red-600 text-white text-sm">
+    <div role="alert" className="flex items-center px-4 py-2 bg-red-600 text-white text-sm">
       {t.missingBinaries(missing.join(", "))}
     </div>
   );
@@ -126,6 +126,7 @@ function UpdateBanner() {
         {status !== "downloading" && (
           <button
             onClick={() => setDismissed(true)}
+            aria-label={t.close}
             className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-all font-medium active:scale-[0.97]"
           >
             ✕
@@ -148,6 +149,7 @@ function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
       </h1>
       <button
         onClick={() => setView(view === "settings" ? "main" : "settings")}
+        aria-label={view === "settings" ? t.back : t.settings}
         className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors text-sm font-medium"
       >
         {view === "settings" ? t.back : t.settings}

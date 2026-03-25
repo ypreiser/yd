@@ -64,13 +64,13 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {item.status === "done" && (
-            <span className="animate-check text-emerald-500 text-sm shrink-0">✓</span>
+            <span className="animate-check text-emerald-500 text-sm shrink-0" aria-label={t.done}>✓</span>
           )}
           {item.status === "already_exists" && (
-            <span className="text-amber-500 text-sm shrink-0">⚠</span>
+            <span className="text-amber-500 text-sm shrink-0" aria-label={t.already_exists}>⚠</span>
           )}
           {item.status === "error" && (
-            <span className="text-red-500 text-sm shrink-0">✕</span>
+            <span className="text-red-500 text-sm shrink-0" aria-label={t.error}>✕</span>
           )}
           <span
             className="text-sm text-zinc-800 dark:text-zinc-200 truncate"
@@ -91,6 +91,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
               onClick={handleCancel}
               className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 active:scale-[0.9] transition-all text-xs"
               title={t.cancel}
+              aria-label={t.cancel}
             >
               ✕
             </button>
@@ -105,6 +106,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
               }}
               className="text-zinc-400 hover:text-indigo-500 dark:text-zinc-500 dark:hover:text-indigo-400 active:scale-[0.9] transition-all text-xs"
               title={t.openFolder}
+              aria-label={t.openFolder}
             >
               📂
             </button>
@@ -114,6 +116,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
               onClick={() => onRetry(item.url)}
               className="text-zinc-400 hover:text-amber-500 dark:text-zinc-500 dark:hover:text-amber-400 active:scale-[0.9] transition-all text-xs"
               title={t.retry}
+              aria-label={t.retry}
             >
               ↻
             </button>
@@ -124,7 +127,13 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
         item.status !== "already_exists" &&
         item.status !== "error" &&
         item.status !== "cancelled" && (
-          <div className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+          <div
+            className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(item.percent)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <div
               className={`h-full rounded-full transition-all duration-300 relative ${BAR_COLORS[item.status]} ${
                 item.status === "downloading" ? "progress-bar-active" : ""

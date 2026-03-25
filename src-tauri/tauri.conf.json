@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' https://i.ytimg.com https://*.googleusercontent.com https://*.ggpht.com; style-src 'self' 'unsafe-inline'"
     }
   },
   "plugins": {

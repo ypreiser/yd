@@ -35,9 +35,19 @@ jobs:
         shell: bash
         run: |
           mkdir -p src-tauri/binaries
-          # yt-dlp
+          # yt-dlp (with checksum verification)
           curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
             https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          curl -L -o yt-dlp-checksums.txt \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS
+          expected=$(grep 'yt-dlp.exe$' yt-dlp-checksums.txt | awk '{print $1}')
+          actual=$(sha256sum src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::yt-dlp checksum mismatch: expected=$expected actual=$actual"
+            exit 1
+          fi
+          echo "yt-dlp checksum verified: $actual"
+          rm yt-dlp-checksums.txt
           # ffmpeg + ffprobe from gyan.dev (release essentials)
           curl -L -o ffmpeg.zip \
             https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip

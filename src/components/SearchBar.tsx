@@ -83,7 +83,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
 
   return (
     <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-0">
-      <form onSubmit={handleSearch} className="flex gap-2">
+      <form onSubmit={handleSearch} role="search" className="flex gap-2">
         <input
           type="text"
           value={query}

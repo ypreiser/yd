@@ -9,7 +9,7 @@
     "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$DOWNLOAD" }, { "path": "$DOWNLOAD/**" }, { "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$AUDIO/**" }, { "path": "$VIDEO/**" }, { "path": "$DESKTOP/**" }]
+      "allow": [{ "path": "$DOWNLOAD" }, { "path": "$DOWNLOAD/**" }, { "path": "$DOCUMENT/**" }, { "path": "$AUDIO/**" }, { "path": "$VIDEO/**" }, { "path": "$DESKTOP/**" }]
     },
     "dialog:default",
     "updater:default",
