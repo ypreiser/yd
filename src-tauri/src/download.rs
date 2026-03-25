@@ -10,6 +10,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{Mutex, Semaphore};
 use uuid::Uuid;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 static PROGRESS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
 
@@ -56,7 +59,14 @@ fn ytdlp_path(app: &tauri::AppHandle) -> PathBuf {
 
     // 4. System PATH fallback
     let cmd = if cfg!(windows) { "where" } else { "which" };
-    if let Ok(output) = std::process::Command::new(cmd).arg("yt-dlp").output() {
+    let mut path_cmd = std::process::Command::new(cmd);
+    path_cmd.arg("yt-dlp");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        path_cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    if let Ok(output) = path_cmd.output() {
         if output.status.success() {
             let s = String::from_utf8_lossy(&output.stdout);
             if let Some(line) = s.trim().lines().next() {
@@ -110,7 +120,8 @@ async fn embed_title_tag(
     let ext = file_path.extension().unwrap_or_default().to_string_lossy();
     let temp_path = file_path.with_extension(format!("tmp_meta.{}", ext));
 
-    let output = tokio::process::Command::new(&ffmpeg_bin)
+    let mut ffmpeg_cmd = tokio::process::Command::new(&ffmpeg_bin);
+    ffmpeg_cmd
         .args([
             "-nostdin",
             "-i",
@@ -124,7 +135,13 @@ async fn embed_title_tag(
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        ffmpeg_cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = ffmpeg_cmd
         .output()
         .await
         .map_err(|e| format!("ffmpeg failed to start: {}", e))?;
@@ -170,11 +187,17 @@ async fn run_ytdlp(
     app: &tauri::AppHandle,
     args: &[&str],
 ) -> Result<(Vec<u8>, Vec<u8>, bool), String> {
-    let output = tokio::process::Command::new(ytdlp_path(app))
-        .args(args)
+    let mut cmd = tokio::process::Command::new(ytdlp_path(app));
+    cmd.args(args)
         .env("PYTHONUTF8", "1")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -308,8 +331,10 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -555,7 +580,8 @@ pub async fn search_youtube(
     let query = query.trim_start_matches('-');
     let search_query = format!("ytsearch10:{}", query);
 
-    let child = tokio::process::Command::new(ytdlp_path(&app))
+    let mut search_cmd = tokio::process::Command::new(ytdlp_path(&app));
+    search_cmd
         .args([
             "--flat-playlist",
             "--no-download",
@@ -565,7 +591,13 @@ pub async fn search_youtube(
         ])
         .env("PYTHONUTF8", "1")
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        search_cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = search_cmd
         .spawn()
         .map_err(|e| e.to_string())?;
 
@@ -772,6 +804,11 @@ pub async fn download(
         let output_template = format!("{}/%(title)s.%(ext)s", config.download_dir);
         let mut cmd = tokio::process::Command::new(&bin_path);
         cmd.env("PYTHONUTF8", "1");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
         if config.embed_thumbnail {
             cmd.arg("--embed-thumbnail");
         }
