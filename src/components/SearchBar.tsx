@@ -119,7 +119,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
           {results.map((result) => (
             <div
               key={result.id}
-              className="animate-fade-in flex items-center gap-3 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 hover:shadow-sm hover:scale-[1.005] transition-all"
+              className="animate-fade-in flex items-center gap-3 p-2 mx-0.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 hover:shadow-sm hover:scale-[1.005] transition-all"
             >
               <img
                 src={result.thumbnail}
