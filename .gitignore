@@ -30,3 +30,9 @@ src-tauri/target
 *.sw?
 .claude/*
 .hintrc
+
+# Test artifacts
+coverage/
+edgedriver/
+edgedriver.zip
+edgelist.xml
