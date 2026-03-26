@@ -157,7 +157,6 @@ async fn embed_title_tag(
         .stderr(Stdio::piped());
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         ffmpeg_cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let output = ffmpeg_cmd
@@ -183,7 +182,6 @@ async fn embed_title_tag(
             .stderr(Stdio::piped());
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
             ffmpeg_cmd2.creation_flags(CREATE_NO_WINDOW);
         }
         let output2 = ffmpeg_cmd2
@@ -239,7 +237,6 @@ async fn run_ytdlp(
         .stderr(Stdio::piped());
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let output = cmd
@@ -639,7 +636,6 @@ pub async fn search_youtube(
         .stderr(Stdio::piped());
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         search_cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let child = search_cmd
@@ -851,7 +847,6 @@ pub async fn download(
         cmd.env("PYTHONUTF8", "1");
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
         if config.embed_thumbnail {
