@@ -294,8 +294,10 @@ function App() {
             />
           ) : (
             <>
-              <div className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">
+              <div role="tablist" className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">
                 <button
+                  role="tab"
+                  aria-selected={inputMode === "url"}
                   onClick={() => setInputMode("url")}
                   className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                     inputMode === "url"
@@ -306,6 +308,8 @@ function App() {
                   URL
                 </button>
                 <button
+                  role="tab"
+                  aria-selected={inputMode === "search"}
                   onClick={() => setInputMode("search")}
                   className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                     inputMode === "search"

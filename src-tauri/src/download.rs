@@ -386,7 +386,10 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("taskkill failed: {}", stderr));
+            // taskkill exits non-zero when process already exited — not a real error
+            if !stderr.contains("not found") {
+                return Err(format!("taskkill failed: {}", stderr));
+            }
         }
     }
     #[cfg(unix)]
@@ -508,11 +511,11 @@ pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo
         .await
         .map_err(|e| e.to_string())?;
 
-    let latest = resp["tag_name"]
+    let latest: String = resp["tag_name"]
         .as_str()
         .unwrap_or("")
         .to_string();
-
+    
     let update_available = !latest.is_empty() && version_is_newer(&latest, &current);
 
     Ok(YtdlpUpdateInfo {
@@ -530,12 +533,12 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     let (download_url, binary_name) = if cfg!(windows) {
         ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", "yt-dlp.exe")
     } else if cfg!(target_os = "macos") {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos", "yt-dlp_macos")
+        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos", "yt-dlp_macos") 
     } else {
         ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", "yt-dlp")
     };
 
-    let path = if cfg!(windows) {
+    let path: PathBuf = if cfg!(windows) {
         app_data.join("yt-dlp.exe")
     } else {
         app_data.join("yt-dlp")

@@ -70,9 +70,9 @@
   animation: progress-shimmer 1.8s ease-in-out infinite;
 }
 
-/* ── Focus visible ── */
+/* ── Focus visible (skip elements already styled by Tailwind focus:ring) ── */
 
-*:focus-visible {
+*:focus-visible:not([class*="focus:"]) {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
   border-radius: 4px;

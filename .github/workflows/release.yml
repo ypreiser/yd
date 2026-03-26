@@ -35,11 +35,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p src-tauri/binaries
-          # yt-dlp (with checksum verification)
-          curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
-            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          # yt-dlp (with checksum verification — fetch checksums first to avoid TOCTOU)
           curl -L -o yt-dlp-checksums.txt \
             https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS
+          curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
           expected=$(grep 'yt-dlp.exe$' yt-dlp-checksums.txt | awk '{print $1}')
           actual=$(sha256sum src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe | awk '{print $1}')
           if [ "$expected" != "$actual" ]; then
@@ -48,9 +48,19 @@ jobs:
           fi
           echo "yt-dlp checksum verified: $actual"
           rm yt-dlp-checksums.txt
-          # ffmpeg + ffprobe from gyan.dev (release essentials)
+          # ffmpeg + ffprobe from gyan.dev (release essentials, with checksum verification)
           curl -L -o ffmpeg.zip \
             https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+          curl -L -o ffmpeg.zip.sha256 \
+            https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256
+          expected_ff=$(cat ffmpeg.zip.sha256 | awk '{print $1}')
+          actual_ff=$(sha256sum ffmpeg.zip | awk '{print $1}')
+          if [ "$expected_ff" != "$actual_ff" ]; then
+            echo "::error::ffmpeg checksum mismatch: expected=$expected_ff actual=$actual_ff"
+            exit 1
+          fi
+          echo "ffmpeg checksum verified: $actual_ff"
+          rm ffmpeg.zip.sha256
           7z x ffmpeg.zip -offmpeg_tmp -y
           cp ffmpeg_tmp/ffmpeg-*-essentials_build/bin/ffmpeg.exe \
             src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe

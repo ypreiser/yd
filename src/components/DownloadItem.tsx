@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { DownloadProgress } from "../lib/tauri";
 import { cancelDownload, getConfig } from "../lib/tauri";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { useT } from "../lib/i18n";
+import { useT, translateError } from "../lib/i18n";
 import type { Translations } from "../lib/i18n";
 
 interface DownloadItemProps {
@@ -142,7 +142,7 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
             />
           </div>
         )}
-      {item.error && <p className="text-xs text-red-500 dark:text-red-400">{item.error}</p>}
+      {item.error && <p className="text-xs text-red-500 dark:text-red-400">{translateError(item.error, t)}</p>}
     </div>
   );
 }

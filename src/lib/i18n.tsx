@@ -77,6 +77,12 @@ export interface Translations {
   embedThumbnail: string;
   flipHebrewInTitle: string;
   metadata: string;
+  // yt-dlp error messages
+  errVideoNotAvailable: string;
+  errVideoUnavailable: string;
+  errPrivateVideo: string;
+  errAgeRestricted: string;
+  errVideoRemoved: string;
 }
 
 const en: Translations = {
@@ -147,6 +153,11 @@ const en: Translations = {
   embedThumbnail: "Embed Thumbnail",
   flipHebrewInTitle: "Flip Hebrew in Title",
   metadata: "Metadata",
+  errVideoNotAvailable: "This video is not available",
+  errVideoUnavailable: "Video unavailable",
+  errPrivateVideo: "This is a private video",
+  errAgeRestricted: "Age-restricted video — sign-in required",
+  errVideoRemoved: "This video has been removed",
 };
 
 const he: Translations = {
@@ -217,6 +228,11 @@ const he: Translations = {
   embedThumbnail: "הטמע תמונה ממוזערת",
   flipHebrewInTitle: "הפוך עברית בכותרת",
   metadata: "מטא-דאטה",
+  errVideoNotAvailable: "הסרטון אינו זמין",
+  errVideoUnavailable: "הסרטון אינו זמין",
+  errPrivateVideo: "זהו סרטון פרטי",
+  errAgeRestricted: "סרטון מוגבל גיל — נדרשת התחברות",
+  errVideoRemoved: "הסרטון הוסר",
 };
 
 const locales: Record<Language, Translations> = { en, he };
@@ -233,4 +249,19 @@ export function useT(): Translations {
 
 export function isRTL(lang: Language): boolean {
   return lang === "he";
+}
+
+const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
+  [/This video is not available/i, "errVideoNotAvailable"],
+  [/Video unavailable/i, "errVideoUnavailable"],
+  [/Private video/i, "errPrivateVideo"],
+  [/Sign in to confirm your age/i, "errAgeRestricted"],
+  [/This video has been removed/i, "errVideoRemoved"],
+];
+
+export function translateError(raw: string, t: Translations): string {
+  for (const [pattern, key] of ERROR_PATTERNS) {
+    if (pattern.test(raw)) return t[key] as string;
+  }
+  return raw;
 }
