@@ -94,6 +94,25 @@ fn ffmpeg_location() -> String {
 
 /// Write title metadata into audio file via ffmpeg codec copy.
 /// If flip_hebrew is true, reverses Hebrew character runs in the title.
+/// Apply the same filename sanitization as yt-dlp --windows-filenames:
+/// replace forbidden Windows chars with their fullwidth Unicode equivalents.
+fn sanitize_windows_filename(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '"'  => '\u{FF02}', // ＂
+            '*'  => '\u{FF0A}', // ＊
+            ':'  => '\u{FF1A}', // ：
+            '<'  => '\u{FF1C}', // ＜
+            '>'  => '\u{FF1E}', // ＞
+            '?'  => '\u{FF1F}', // ？
+            '\\' => '\u{FF3C}', // ＼
+            '|'  => '\u{FF5C}', // ｜
+            '/'  => '\u{FF0F}', // ／
+            _ => c,
+        })
+        .collect()
+}
+
 async fn embed_title_tag(
     file_path: &std::path::Path,
     title: &str,
@@ -119,19 +138,19 @@ async fn embed_title_tag(
 
     let ext = file_path.extension().unwrap_or_default().to_string_lossy();
     let temp_path = file_path.with_extension(format!("tmp_meta.{}", ext));
+    let input_path = file_path.to_string_lossy().to_string();
+    let metadata_arg = format!("title={}", final_title);
+    let temp_str = temp_path.to_string_lossy().to_string();
 
+    // Try with -map 0 first to preserve all streams (including embedded thumbnails)
     let mut ffmpeg_cmd = tokio::process::Command::new(&ffmpeg_bin);
     ffmpeg_cmd
         .args([
-            "-nostdin",
-            "-i",
-            &file_path.to_string_lossy(),
-            "-metadata",
-            &format!("title={}", final_title),
-            "-codec",
-            "copy",
-            "-y",
-            &temp_path.to_string_lossy(),
+            "-nostdin", "-i", &input_path,
+            "-map", "0",
+            "-metadata", &metadata_arg,
+            "-codec", "copy",
+            "-y", &temp_str,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -147,10 +166,36 @@ async fn embed_title_tag(
         .map_err(|e| format!("ffmpeg failed to start: {}", e))?;
 
     if !output.status.success() {
-        // Clean up temp file on failure
+        // -map 0 failed (format may not support video/thumbnail stream),
+        // retry with audio-only mapping so title still gets embedded
         let _ = std::fs::remove_file(&temp_path);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("ffmpeg metadata write failed: {}", stderr));
+        let mut ffmpeg_cmd2 = tokio::process::Command::new(&ffmpeg_bin);
+        ffmpeg_cmd2
+            .args([
+                "-nostdin", "-i", &input_path,
+                "-map", "0:a",
+                "-metadata", &metadata_arg,
+                "-codec", "copy",
+                "-y", &temp_str,
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            ffmpeg_cmd2.creation_flags(CREATE_NO_WINDOW);
+        }
+        let output2 = ffmpeg_cmd2
+            .output()
+            .await
+            .map_err(|e| format!("ffmpeg failed to start: {}", e))?;
+
+        if !output2.status.success() {
+            let _ = std::fs::remove_file(&temp_path);
+            let stderr = String::from_utf8_lossy(&output2.stderr);
+            return Err(format!("ffmpeg metadata write failed: {}", stderr));
+        }
     }
 
     std::fs::rename(&temp_path, file_path)
@@ -942,18 +987,40 @@ pub async fn download(
                 // Post-process: embed title tag via ffmpeg
                 if success && !already_exists && config.embed_title {
                     if let Some(ref t) = title {
-                        let file_path = filepath.as_ref()
-                            .map(|p| PathBuf::from(p))
-                            .unwrap_or_else(|| PathBuf::from(&config.download_dir)
-                                .join(format!("{}.{}", t, &config.audio_format)));
-                        if file_path.exists() {
-                            if let Err(e) = embed_title_tag(
-                                &file_path,
-                                t,
-                                &ffmpeg_path,
-                                config.flip_hebrew_in_title,
-                            ).await {
-                                eprintln!("embed_title_tag failed: {}", e);
+                        // Try yt-dlp's reported filepath first; if it doesn't exist,
+                        // reconstruct using the same fullwidth-char sanitization yt-dlp
+                        // applies with --windows-filenames
+                        let mut file_path = filepath.as_ref().map(|p| PathBuf::from(p));
+                        if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
+                            let sanitized = sanitize_windows_filename(t);
+                            file_path = Some(PathBuf::from(&config.download_dir)
+                                .join(format!("{}.{}", sanitized, &config.audio_format)));
+                        }
+                        // Fallback: prefix search for encoding edge cases (e.g. é lost in pipe)
+                        if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
+                            let sanitized = sanitize_windows_filename(t);
+                            let prefix: String = sanitized.chars().take(20).collect();
+                            let ext_suffix = format!(".{}", &config.audio_format);
+                            if let Ok(entries) = std::fs::read_dir(&config.download_dir) {
+                                for entry in entries.filter_map(|e| e.ok()) {
+                                    let name = entry.file_name().to_string_lossy().to_string();
+                                    if name.starts_with(&prefix) && name.ends_with(&ext_suffix) {
+                                        file_path = Some(entry.path());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(ref fp) = file_path {
+                            if fp.exists() {
+                                if let Err(e) = embed_title_tag(
+                                    fp,
+                                    t,
+                                    &ffmpeg_path,
+                                    config.flip_hebrew_in_title,
+                                ).await {
+                                    eprintln!("embed_title_tag failed: {}", e);
+                                }
                             }
                         }
                     }
