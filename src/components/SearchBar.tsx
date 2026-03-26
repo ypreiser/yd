@@ -82,7 +82,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-0">
+    <div className="flex flex-col gap-3 flex-1 min-h-0">
       <form onSubmit={handleSearch} role="search" className="flex gap-2">
         <input
           type="text"
@@ -95,7 +95,9 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
           type="submit"
           disabled={!loading && query.trim().length === 0}
           className={`rounded-lg px-5 py-2 text-sm font-medium text-white active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap ${
-            loading ? "bg-red-600 hover:bg-red-500" : "bg-indigo-600 hover:bg-indigo-500"
+            loading
+              ? "bg-red-600 hover:bg-red-500"
+              : "bg-indigo-600 hover:bg-indigo-500"
           }`}
         >
           {loading ? t.stop : t.search}
@@ -105,7 +107,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {loading && (
-        <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+        <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-1">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonCard key={i} />
           ))}
@@ -113,7 +115,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       )}
 
       {!loading && results.length > 0 && (
-        <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+        <div className="flex flex-col gap-2 overflow-y-auto overflow-x-hidden flex-1 min-h-0">
           {results.map((result) => (
             <div
               key={result.id}
@@ -152,14 +154,19 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
 
       {playlistLoading && (
         <div className="flex items-center justify-center py-4">
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">{t.loadingPlaylist}</span>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+            {t.loadingPlaylist}
+          </span>
         </div>
       )}
 
       {playlistData && (
         <PlaylistModal
           playlist={playlistData}
-          onDownload={(urls) => { onDownload(urls); setPlaylistData(null); }}
+          onDownload={(urls) => {
+            onDownload(urls);
+            setPlaylistData(null);
+          }}
           onClose={() => setPlaylistData(null)}
         />
       )}

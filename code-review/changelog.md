@@ -82,6 +82,58 @@
 
 ---
 
+## CR-003 — 2026-03-26
+
+### Fixes Verified
+
+| # | Issue | Verdict |
+|---|-------|---------|
+| #1 | CSP disabled | Partially fixed — CSP now set; gaps remain (see #24) |
+| #2 | Unverified binary download | Confirmed fixed |
+| #3 | Unverified binary exec | Confirmed fixed |
+| #5 | Config validation | Confirmed fixed |
+| #6 | Version comparison | Confirmed fixed |
+| #7 | Deadlock in cancel_download | Confirmed fixed |
+| #9 | Search query sanitization | Confirmed fixed |
+| #10 | Unix kill semantics | Confirmed fixed |
+| #11 | PID 0 kill risk | Confirmed fixed |
+| #13 | Progress re-render perf | Confirmed fixed |
+| #14 | Duplicated isPlaylistUrl | Confirmed fixed |
+| #16 | Dead formatDuration | Confirmed fixed |
+| #22 | Search race condition | Confirmed fixed |
+| #23 | PID map leak | Confirmed fixed |
+
+### New Issues Found
+
+| # | Severity | Description |
+|---|----------|-------------|
+| #24 | High | CSP missing `connect-src ipc: http://ipc.localhost`; IPC may break in WebView2 |
+| #25 | High | CI downloads binary before checksum file — TOCTOU window between two `latest` resolves |
+| #26 | Medium | ffmpeg pulled from gyan.dev in CI with no checksum |
+| #27 | Medium | taskkill non-zero exit (process already gone) propagates as cancel error |
+| #28 | Medium | PlaylistModal has no focus trap; Tab escapes modal |
+| #29 | Low | URL/Search tab buttons lack `role="tab"` / `aria-selected` |
+| #30 | Low | `opener:allow-open-path` still allows $DOCUMENT, $AUDIO, $VIDEO, $DESKTOP |
+| #31 | Low | Global `*:focus-visible` may double-render with Tailwind `focus:ring` on inputs |
+
+### Files Reviewed
+
+| File | Changed |
+|------|---------|
+| `src-tauri/src/download.rs` | Yes |
+| `src-tauri/tauri.conf.json` | Yes |
+| `src-tauri/capabilities/default.json` | Yes |
+| `.github/workflows/release.yml` | Yes |
+| `src/App.tsx` | Yes |
+| `src/App.css` | Yes |
+| `src/components/DownloadItem.tsx` | Yes |
+| `src/components/DownloadList.tsx` | Yes |
+| `src/components/PlaylistModal.tsx` | Yes |
+| `src/components/SearchBar.tsx` | Yes |
+| `src/components/UrlInput.tsx` | Yes |
+
+---
+
 ## CR-001 — 2026-03-18
 
 ### Actions Taken
