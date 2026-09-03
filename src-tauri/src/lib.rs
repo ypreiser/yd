@@ -1,6 +1,8 @@
 mod config;
 mod download;
 mod hebrew;
+mod logging;
+mod net;
 
 use download::{DownloadState, SearchState};
 
@@ -32,6 +34,11 @@ pub fn run() {
             download::check_binaries,
             download::check_disk_space,
             download::cancel_search,
+            logging::log_app_error,
+            logging::error_log_info,
+            logging::clear_error_log,
+            logging::build_error_report,
+            net::check_connectivity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

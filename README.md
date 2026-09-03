@@ -10,6 +10,9 @@ Tauri v2 desktop app for downloading YouTube songs as audio files using yt-dlp.
 - Configurable download directory
 - Progress tracking per download
 - Bundled yt-dlp + ffmpeg (no external dependencies)
+- Online / offline indicator (tells "no internet" apart from "YouTube unreachable")
+- Cookie support with in-app, step-by-step instructions for YouTube's bot check
+- Local error log and a one-click, user-reviewed bug report
 
 ## Install
 
@@ -69,6 +72,39 @@ Cookie handling notes:
 - Only the browser names in the dropdown and an existing absolute file path are
   accepted, so a hand-edited `config.json` can't turn these settings into extra
   yt-dlp command-line flags.
+
+## Reporting a problem
+
+Settings → **Report a Problem**:
+
+1. **Prepare report** builds the report text — app/OS/yt-dlp version, the current
+   audio and cookie settings, and the last 40 logged errors.
+2. The full text is shown for review first. Nothing leaves the machine until you
+   press **Open GitHub issue**, which opens a browser with the text pre-filled
+   in a new issue you still have to submit yourself. **Copy** puts the same text
+   on the clipboard if you'd rather send it another way.
+3. **Open log folder** reveals `errors.log`; **Clear log** empties it.
+
+What the log contains, and what it never contains:
+
+- Errors are redacted *as they are written*, not when a report is built, so the
+  file on disk is already safe to share: the home directory is replaced with
+  `~`, the user name with `<user>`, and any `--cookies`, `--cookies-from-browser`
+  or `Cookie:` value with `<redacted>`.
+- The report deliberately omits your download directory and cookie file path.
+- The log rotates at 256 KB and keeps one previous file, so it cannot grow
+  without bound.
+
+## Network activity
+
+Besides yt-dlp's own traffic, the app makes two kinds of request:
+
+- **Update checks** to the GitHub API (yt-dlp) and the app's update endpoint.
+- **Connectivity probes** every 30 seconds while the app is open:
+  `https://www.youtube.com/generate_204`, and only if that fails,
+  `https://www.cloudflare.com/cdn-cgi/trace` to tell "offline" apart from
+  "YouTube unreachable". Both are no-content endpoints; nothing about you or
+  your downloads is sent.
 
 ## Screenshots
 

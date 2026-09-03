@@ -87,6 +87,28 @@ export interface Translations {
   cookiesFile: string;
   cookiesWarning: string;
   settingsSaveError: string;
+  // connection
+  connection: string;
+  online: string;
+  offline: string;
+  youtubeUnreachable: string;
+  // cookie instructions
+  cookiesHowTo: string;
+  cookiesStepsBrowser: string[];
+  cookiesStepsFile: string[];
+  cookiesGuideLink: string;
+  // problem reports
+  reportProblem: string;
+  reportHelp: string;
+  prepareReport: string;
+  reportConsent: string;
+  copyReport: string;
+  reportCopied: string;
+  openGithubIssue: string;
+  openLogFolder: string;
+  clearLog: string;
+  logEntries: (n: number) => string;
+  reportError: string;
   // yt-dlp error messages
   errVideoNotAvailable: string;
   errVideoUnavailable: string;
@@ -176,6 +198,38 @@ const en: Translations = {
   cookiesWarning:
     "Cookies give this app access to your YouTube account. Prefer a throwaway account, and keep the cookies.txt file private.",
   settingsSaveError: "Could not save settings",
+  connection: "Connection",
+  online: "Online",
+  offline: "Offline",
+  youtubeUnreachable: "YouTube unreachable",
+  cookiesHowTo: "How do I get cookies?",
+  cookiesStepsBrowser: [
+    "Sign in to YouTube in the browser you pick below.",
+    "Close that browser completely — it locks its cookie database while running.",
+    "Pick the browser and press Save, then start a download.",
+    "On Windows, Chrome/Edge/Brave usually refuse to hand over cookies. If it keeps failing, use the cookies.txt option instead.",
+  ],
+  cookiesStepsFile: [
+    "Install a cookies.txt exporter extension in your browser (search the store for \"Get cookies.txt\").",
+    "Open a private/incognito window and sign in to youtube.com there.",
+    "Play any video for a second, then export cookies for youtube.com to a .txt file.",
+    "Close the private window WITHOUT logging out — logging out invalidates the cookies you just saved.",
+    "Press Browse below, pick the file, and Save.",
+  ],
+  cookiesGuideLink: "yt-dlp cookie export guide",
+  reportProblem: "Report a Problem",
+  reportHelp:
+    "Errors are written to a local log file. Nothing is sent anywhere unless you choose to send it.",
+  prepareReport: "Prepare report",
+  reportConsent:
+    "Review the report below. \"Open GitHub issue\" opens your browser with this text pre-filled — you still choose to submit it.",
+  copyReport: "Copy",
+  reportCopied: "Copied",
+  openGithubIssue: "Open GitHub issue",
+  openLogFolder: "Open log folder",
+  clearLog: "Clear log",
+  logEntries: (n) => `${n} logged errors`,
+  reportError: "Could not build the report",
   errVideoNotAvailable: "This video is not available",
   errVideoUnavailable: "Video unavailable",
   errPrivateVideo: "This is a private video",
@@ -266,6 +320,38 @@ const he: Translations = {
   cookiesWarning:
     "העוגיות מעניקות לאפליקציה גישה לחשבון YouTube שלך. עדיף להשתמש בחשבון נפרד, ולשמור על קובץ ה-cookies.txt פרטי.",
   settingsSaveError: "שמירת ההגדרות נכשלה",
+  connection: "חיבור",
+  online: "מחובר",
+  offline: "לא מחובר",
+  youtubeUnreachable: "אין גישה ליוטיוב",
+  cookiesHowTo: "איך משיגים עוגיות?",
+  cookiesStepsBrowser: [
+    "התחבר ליוטיוב בדפדפן שתבחר למטה.",
+    "סגור את הדפדפן לגמרי — כל עוד הוא פועל הוא נועל את מסד העוגיות.",
+    "בחר את הדפדפן, לחץ שמירה והתחל הורדה.",
+    "בחלונות, Chrome/Edge/Brave לרוב לא מאפשרים קריאת עוגיות. אם זה ממשיך להיכשל, השתמש באפשרות קובץ cookies.txt.",
+  ],
+  cookiesStepsFile: [
+    "התקן בדפדפן תוסף לייצוא cookies.txt (חפש בחנות \"Get cookies.txt\").",
+    "פתח חלון פרטי/גלישה בסתר והתחבר שם ל-youtube.com.",
+    "הפעל סרטון כלשהו לרגע, ואז ייצא את העוגיות של youtube.com לקובץ txt.",
+    "סגור את החלון הפרטי בלי להתנתק — התנתקות מבטלת את העוגיות שייצאת.",
+    "לחץ עיון למטה, בחר את הקובץ ושמור.",
+  ],
+  cookiesGuideLink: "מדריך ייצוא עוגיות של yt-dlp",
+  reportProblem: "דיווח על תקלה",
+  reportHelp:
+    "שגיאות נכתבות לקובץ יומן מקומי. שום דבר לא נשלח לשום מקום אלא אם תבחר לשלוח.",
+  prepareReport: "הכן דוח",
+  reportConsent:
+    "עבור על הדוח למטה. \"פתח דיווח ב-GitHub\" יפתח את הדפדפן עם הטקסט הזה מוכן — השליחה עדיין בידיים שלך.",
+  copyReport: "העתק",
+  reportCopied: "הועתק",
+  openGithubIssue: "פתח דיווח ב-GitHub",
+  openLogFolder: "פתח תיקיית יומן",
+  clearLog: "נקה יומן",
+  logEntries: (n) => `${n} שגיאות ביומן`,
+  reportError: "בניית הדוח נכשלה",
   errVideoNotAvailable: "הסרטון אינו זמין",
   errVideoUnavailable: "הסרטון אינו זמין",
   errPrivateVideo: "זהו סרטון פרטי",

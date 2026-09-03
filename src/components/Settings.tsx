@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { AppConfig, CookiesMode } from "../lib/tauri";
 import {
   getConfig,
@@ -8,6 +9,9 @@ import {
   checkYtdlpUpdate,
   updateYtdlp,
   COOKIE_BROWSERS,
+  errorLogInfo,
+  clearErrorLog,
+  buildErrorReport,
 } from "../lib/tauri";
 import { useT } from "../lib/i18n";
 import { getVersion } from "@tauri-apps/api/app";
@@ -18,6 +22,28 @@ interface SettingsProps {
 }
 
 const AUDIO_FORMATS = ["m4a", "mp3", "opus", "flac"];
+
+/** yt-dlp's own, always-current guide to exporting YouTube cookies. */
+const COOKIE_GUIDE_URL =
+  "https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies";
+const ISSUE_URL = "https://github.com/ypreiser/yd/issues/new";
+/** Browsers refuse very long URLs, and GitHub truncates anyway. */
+const MAX_ISSUE_BODY = 4000;
+
+function Steps({ title, steps }: { title: string; steps: string[] }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+        {title}
+      </p>
+      <ol className="list-decimal ms-5 flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
 function Section({ children }: { children: React.ReactNode }) {
   return (
@@ -38,6 +64,11 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const [ytdlpStatus, setYtdlpStatus] = useState<
     "idle" | "checking" | "available" | "updating" | "done" | "error"
   >("idle");
+  const [logPath, setLogPath] = useState("");
+  const [logEntries, setLogEntries] = useState(0);
+  const [report, setReport] = useState<string | null>(null);
+  const [reportError, setReportError] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     getConfig().then(setLocalConfig);
@@ -45,7 +76,47 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
     getYtdlpVersion()
       .then(setYtdlpVer)
       .catch(() => {});
+    errorLogInfo()
+      .then((info) => {
+        setLogPath(info.path);
+        setLogEntries(info.entries);
+      })
+      .catch(() => {});
   }, []);
+
+  async function handlePrepareReport() {
+    setReportError(false);
+    setCopied(false);
+    try {
+      setReport(await buildErrorReport(ytdlpVer || undefined));
+    } catch {
+      setReportError(true);
+    }
+  }
+
+  async function handleCopyReport() {
+    if (!report) return;
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  async function handleOpenIssue() {
+    if (!report) return;
+    const body = report.slice(0, MAX_ISSUE_BODY);
+    await openUrl(
+      `${ISSUE_URL}?title=${encodeURIComponent("Bug report")}&body=${encodeURIComponent(body)}`
+    );
+  }
+
+  async function handleClearLog() {
+    await clearErrorLog();
+    setLogEntries(0);
+    setReport(null);
+  }
 
   async function handlePickDir() {
     const dir = await open({ directory: true, multiple: false });
@@ -353,6 +424,25 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
               {t.cookiesWarning}
             </p>
           )}
+
+          <details className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              {t.cookiesHowTo}
+            </summary>
+            <div className="flex flex-col gap-3 pt-3">
+              <Steps
+                title={t.cookiesFromBrowser}
+                steps={t.cookiesStepsBrowser}
+              />
+              <Steps title={t.cookiesFromFile} steps={t.cookiesStepsFile} />
+              <button
+                onClick={() => openUrl(COOKIE_GUIDE_URL)}
+                className="self-start text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {t.cookiesGuideLink} ↗
+              </button>
+            </div>
+          </details>
         </Section>
 
         {/* Updates */}
@@ -459,6 +549,79 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           {appVersion && (
             <div className="text-xs text-zinc-400 dark:text-zinc-500">
               {t.version} {appVersion}
+            </div>
+          )}
+        </Section>
+
+        {/* Problem reports */}
+        <Section>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.reportProblem}
+            </label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.reportHelp}
+            </p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.logEntries(logEntries)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handlePrepareReport}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+            >
+              {t.prepareReport}
+            </button>
+            {logPath && (
+              <button
+                onClick={() => revealItemInDir(logPath)}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+              >
+                {t.openLogFolder}
+              </button>
+            )}
+            {logEntries > 0 && (
+              <button
+                onClick={handleClearLog}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+              >
+                {t.clearLog}
+              </button>
+            )}
+          </div>
+
+          {reportError && (
+            <p className="text-sm text-red-500">{t.reportError}</p>
+          )}
+
+          {report !== null && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t.reportConsent}
+              </p>
+              <textarea
+                readOnly
+                value={report}
+                aria-label={t.reportProblem}
+                rows={10}
+                className={`${inputClass} font-mono text-xs`}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleOpenIssue}
+                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] transition-all"
+                >
+                  {t.openGithubIssue}
+                </button>
+                <button
+                  onClick={handleCopyReport}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+                >
+                  {copied ? t.reportCopied : t.copyReport}
+                </button>
+              </div>
             </div>
           )}
         </Section>

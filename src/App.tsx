@@ -15,6 +15,7 @@ import {
   checkBinaries,
 } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
+import { useConnectivity } from "./lib/useConnectivity";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -137,6 +138,32 @@ function UpdateBanner() {
   );
 }
 
+function ConnectionIndicator() {
+  const t = useT();
+  const state = useConnectivity();
+
+  const { dot, label } = {
+    online: { dot: "bg-green-500", label: t.online },
+    offline: { dot: "bg-red-500", label: t.offline },
+    "no-youtube": { dot: "bg-amber-500", label: t.youtubeUnreachable },
+  }[state];
+
+  return (
+    <span
+      className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400"
+      title={`${t.connection}: ${label}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block h-2 w-2 rounded-full ${dot}`}
+      />
+      <span role="status" aria-label={`${t.connection}: ${label}`}>
+        {label}
+      </span>
+    </span>
+  );
+}
+
 function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
   const t = useT();
   return (
@@ -147,13 +174,16 @@ function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
       >
         {t.appTitle}
       </h1>
-      <button
-        onClick={() => setView(view === "settings" ? "main" : "settings")}
-        aria-label={view === "settings" ? t.back : t.settings}
-        className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors text-sm font-medium"
-      >
-        {view === "settings" ? t.back : t.settings}
-      </button>
+      <div className="flex items-center gap-4">
+        <ConnectionIndicator />
+        <button
+          onClick={() => setView(view === "settings" ? "main" : "settings")}
+          aria-label={view === "settings" ? t.back : t.settings}
+          className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors text-sm font-medium"
+        >
+          {view === "settings" ? t.back : t.settings}
+        </button>
+      </div>
     </div>
   );
 }

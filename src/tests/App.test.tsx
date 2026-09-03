@@ -4,6 +4,7 @@ import App from "../App";
 import * as tauriLib from "../lib/tauri";
 import * as eventLib from "@tauri-apps/api/event";
 import { DEFAULT_CONFIG } from "./setup";
+import { getTranslations } from "../lib/i18n";
 import type { DownloadProgress } from "../lib/tauri";
 
 // Helper to simulate a download-progress event from the backend
@@ -21,6 +22,8 @@ function simulateProgress(
     ...progress,
   });
 }
+
+const t = getTranslations("en");
 
 describe("App", () => {
   let capturedProgressCallback: ((progress: DownloadProgress) => void) | null = null;
@@ -386,6 +389,44 @@ describe("App", () => {
     await waitFor(() => {
       expect(batchSpy).toHaveBeenCalledWith(
         expect.arrayContaining(["https://www.youtube.com/watch?v=retryMe"])
+      );
+    });
+  });
+
+  describe("connection indicator", () => {
+    it("shows online when YouTube is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: true,
+      });
+      render(<App />);
+
+      expect(await screen.findByRole("status")).toHaveTextContent(t.online);
+    });
+
+    it("warns when the machine is online but YouTube is not reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: false,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          t.youtubeUnreachable
+        )
+      );
+    });
+
+    it("shows offline when nothing is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(t.offline)
       );
     });
   });

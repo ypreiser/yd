@@ -129,3 +129,46 @@ export function onDownloadProgress(
     callback(event.payload);
   });
 }
+
+// --- connectivity ---
+
+export interface Connectivity {
+  /** Some host on the internet answered. */
+  online: boolean;
+  /** YouTube itself answered. */
+  youtube: boolean;
+}
+
+export async function checkConnectivity(): Promise<Connectivity> {
+  return invoke("check_connectivity");
+}
+
+// --- error log / problem reports ---
+
+export interface LogInfo {
+  path: string;
+  entries: number;
+}
+
+/** Record a frontend failure in the local (redacted) error log. */
+export async function logAppError(
+  context: string,
+  message: string
+): Promise<void> {
+  return invoke("log_app_error", { context, message });
+}
+
+export async function errorLogInfo(): Promise<LogInfo> {
+  return invoke("error_log_info");
+}
+
+export async function clearErrorLog(): Promise<void> {
+  return invoke("clear_error_log");
+}
+
+/** Build the report text shown to the user before anything is shared. */
+export async function buildErrorReport(
+  ytdlpVersion?: string
+): Promise<string> {
+  return invoke("build_error_report", { ytdlpVersion: ytdlpVersion ?? null });
+}

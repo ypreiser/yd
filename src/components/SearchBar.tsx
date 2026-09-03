@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useT, translateError } from "../lib/i18n";
 import type { SearchResult, PlaylistInfo } from "../lib/tauri";
-import { searchYoutube, fetchPlaylist, cancelSearch } from "../lib/tauri";
+import { searchYoutube, fetchPlaylist, cancelSearch, logAppError } from "../lib/tauri";
 import PlaylistModal from "./PlaylistModal";
 import { isPlaylistUrl } from "../lib/youtube";
 
@@ -65,6 +65,7 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
         setError(known === raw ? t.searchError : known);
       }
       console.error("search failed:", err);
+      logAppError("search-ui", String(err)).catch(() => {});
     } finally {
       if (id === searchIdRef.current) setLoading(false);
     }
@@ -76,8 +77,9 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       try {
         const info = await fetchPlaylist(url);
         setPlaylistData(info);
-      } catch {
+      } catch (err) {
         // Fallback: download directly if playlist fetch fails
+        logAppError("playlist-ui", String(err)).catch(() => {});
         onDownload([url]);
       } finally {
         setPlaylistLoading(false);

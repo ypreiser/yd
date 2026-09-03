@@ -719,7 +719,9 @@ pub async fn search_youtube(
     let (stdout_bytes, stderr_bytes, success) = (output.stdout, output.stderr, output.status.success());
 
     if !success {
-        return Err(decode_output(&stderr_bytes));
+        let err = decode_output(&stderr_bytes);
+        crate::logging::log_error(&app, "search", &err);
+        return Err(err);
     }
 
     let stdout = decode_output(&stdout_bytes);
@@ -794,7 +796,9 @@ pub async fn fetch_playlist(
     let (stdout, stderr, success) = run_ytdlp(&app, &arg_refs).await?;
 
     if !success {
-        return Err(decode_output(&stderr));
+        let err = decode_output(&stderr);
+        crate::logging::log_error(&app, "playlist", &err);
+        return Err(err);
     }
 
     let stdout = decode_output(&stdout);
@@ -1094,6 +1098,10 @@ pub async fn download(
                     }
                 }
 
+                if let Some(ref err) = first_error {
+                    crate::logging::log_error(&app, "download", err);
+                }
+
                 let (status, error): (String, Option<String>) = if was_cancelled {
                     ("cancelled".to_string(), None)
                 } else if success && already_exists {
@@ -1133,6 +1141,7 @@ pub async fn download(
             }
             Err(e) => {
                 let err_str = e.to_string();
+                crate::logging::log_error(&app, "download-spawn", &err_str);
                 // Clean up PID map in case it was inserted
                 children.lock().await.remove(&id_clone);
                 app.emit(

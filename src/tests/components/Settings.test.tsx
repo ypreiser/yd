@@ -358,4 +358,104 @@ describe("Settings", () => {
       expect(screen.getByRole("button", { name: t.save })).not.toBeDisabled();
     });
   });
+
+  describe("cookie instructions", () => {
+    it("shows step-by-step instructions for both cookie sources", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByText(t.cookiesHowTo));
+      for (const step of t.cookiesStepsBrowser) {
+        expect(screen.getByText(step)).toBeInTheDocument();
+      }
+      for (const step of t.cookiesStepsFile) {
+        expect(screen.getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("links to the yt-dlp export guide", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      renderSettings();
+
+      const link = await screen.findByRole("button", {
+        name: `${t.cookiesGuideLink} ↗`,
+      });
+      fireEvent.click(link);
+
+      expect(openUrl).toHaveBeenCalledWith(
+        expect.stringContaining("yt-dlp/yt-dlp/wiki/Extractors")
+      );
+    });
+  });
+
+  describe("problem reports", () => {
+    it("does not show any report until the user asks for one", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.prepareReport }));
+      expect(screen.queryByLabelText(t.reportProblem)).not.toBeInTheDocument();
+      expect(screen.queryByText(t.reportConsent)).not.toBeInTheDocument();
+    });
+
+    it("shows the report and the consent note after preparing it", async () => {
+      vi.spyOn(tauriLib, "buildErrorReport").mockResolvedValue("### Environment\n- App: YD 1.2.1\n");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+
+      const textarea = (await screen.findByLabelText(t.reportProblem)) as HTMLTextAreaElement;
+      expect(textarea.value).toContain("App: YD 1.2.1");
+      expect(textarea).toHaveAttribute("readonly");
+      expect(screen.getByText(t.reportConsent)).toBeInTheDocument();
+    });
+
+    it("opens a prefilled GitHub issue only when asked, with the report as the body", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      vi.spyOn(tauriLib, "buildErrorReport").mockResolvedValue("boom happened");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+      await screen.findByLabelText(t.reportProblem);
+      expect(openUrl).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: t.openGithubIssue }));
+
+      await waitFor(() => {
+        expect(openUrl).toHaveBeenCalledWith(
+          expect.stringContaining("github.com/ypreiser/yd/issues/new")
+        );
+      });
+      const url = (openUrl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(url).toContain(encodeURIComponent("boom happened"));
+    });
+
+    it("reveals the log file and clears the log", async () => {
+      const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+      vi.spyOn(tauriLib, "errorLogInfo").mockResolvedValue({
+        path: "/home/test/.local/share/yd/logs/errors.log",
+        entries: 3,
+      });
+      const clearSpy = vi.spyOn(tauriLib, "clearErrorLog").mockResolvedValue(undefined);
+      renderSettings();
+
+      expect(await screen.findByText(t.logEntries(3))).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: t.openLogFolder }));
+      expect(revealItemInDir).toHaveBeenCalledWith(
+        "/home/test/.local/share/yd/logs/errors.log"
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: t.clearLog }));
+      await waitFor(() => expect(clearSpy).toHaveBeenCalled());
+      expect(await screen.findByText(t.logEntries(0))).toBeInTheDocument();
+    });
+
+    it("reports a failure to build the report instead of failing silently", async () => {
+      vi.spyOn(tauriLib, "buildErrorReport").mockRejectedValue("no app data dir");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+
+      expect(await screen.findByText(t.reportError)).toBeInTheDocument();
+    });
+  });
 });
