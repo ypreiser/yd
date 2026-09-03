@@ -15,6 +15,9 @@ export const DEFAULT_CONFIG = {
   embed_title: false,
   embed_thumbnail: false,
   flip_hebrew_in_title: false,
+  cookies_mode: "none" as const,
+  cookies_browser: "",
+  cookies_file: "",
 };
 
 // Mock @tauri-apps/api/core

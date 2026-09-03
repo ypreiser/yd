@@ -281,4 +281,81 @@ describe("Settings", () => {
       expect(openSpy).toHaveBeenCalledWith({ directory: true, multiple: false });
     });
   });
+
+  describe("YouTube cookies", () => {
+    it("defaults to no cookies and hides the browser/file inputs", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesNone }));
+      expect(screen.queryByLabelText(t.cookiesBrowser)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(t.cookiesFile)).not.toBeInTheDocument();
+    });
+
+    it("selecting 'from browser' defaults to firefox and saves it", async () => {
+      const setConfigSpy = vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromBrowser }));
+
+      const select = (await screen.findByLabelText(t.cookiesBrowser)) as HTMLSelectElement;
+      expect(select.value).toBe("firefox");
+
+      await userEvent.selectOptions(select, "chrome");
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      await waitFor(() => {
+        const saved = setConfigSpy.mock.calls[0][0] as AppConfig;
+        expect(saved.cookies_mode).toBe("browser");
+        expect(saved.cookies_browser).toBe("chrome");
+      });
+    });
+
+    it("selecting 'from file' saves the chosen cookies path", async () => {
+      const setConfigSpy = vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromFile }));
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromFile }));
+
+      const input = (await screen.findByLabelText(t.cookiesFile)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "C:\\cookies.txt" } });
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      await waitFor(() => {
+        const saved = setConfigSpy.mock.calls[0][0] as AppConfig;
+        expect(saved.cookies_mode).toBe("file");
+        expect(saved.cookies_file).toBe("C:\\cookies.txt");
+      });
+    });
+
+    it("warns about account access once cookies are enabled", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      expect(screen.queryByText(t.cookiesWarning)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      expect(await screen.findByText(t.cookiesWarning)).toBeInTheDocument();
+    });
+
+    it("keeps the dialog open and shows the reason when saving is rejected", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockRejectedValue("Cookies file does not exist");
+      const onClose = vi.fn();
+      const onConfigSaved = vi.fn();
+      renderSettings(onClose, onConfigSaved);
+
+      await waitFor(() => screen.getByRole("button", { name: t.save }));
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(t.settingsSaveError);
+      expect(alert).toHaveTextContent("Cookies file does not exist");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onConfigSaved).not.toHaveBeenCalled();
+
+      // Save stays usable for a retry
+      expect(screen.getByRole("button", { name: t.save })).not.toBeDisabled();
+    });
+  });
 });

@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppConfig } from "../lib/tauri";
+import type { AppConfig, CookiesMode } from "../lib/tauri";
 import {
   getConfig,
   setConfig,
   getYtdlpVersion,
   checkYtdlpUpdate,
   updateYtdlp,
+  COOKIE_BROWSERS,
 } from "../lib/tauri";
 import { useT } from "../lib/i18n";
 import { getVersion } from "@tauri-apps/api/app";
@@ -30,6 +31,7 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const t = useT();
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
   const [ytdlpVer, setYtdlpVer] = useState("");
   const [ytdlpLatest, setYtdlpLatest] = useState("");
@@ -52,10 +54,43 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
     }
   }
 
+  async function handlePickCookiesFile() {
+    const file = await open({
+      multiple: false,
+      filters: [{ name: "Cookies", extensions: ["txt"] }],
+    });
+    if (file && config) {
+      setLocalConfig({ ...config, cookies_file: file as string });
+    }
+  }
+
+  function setCookiesMode(mode: CookiesMode) {
+    if (!config) return;
+    setLocalConfig({
+      ...config,
+      cookies_mode: mode,
+      // Default to Firefox: on Windows, Chromium browsers encrypt their cookie
+      // store in a way yt-dlp usually cannot read.
+      cookies_browser:
+        mode === "browser" && !config.cookies_browser
+          ? "firefox"
+          : config.cookies_browser,
+    });
+  }
+
   async function handleSave() {
     if (!config) return;
     setSaving(true);
-    await setConfig(config);
+    setSaveError(null);
+    try {
+      await setConfig(config);
+    } catch (err) {
+      // Backend validation rejected something (e.g. a cookies file that is
+      // missing or not an absolute path) — keep the dialog open and say so.
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     onConfigSaved(config);
     onClose();
@@ -229,6 +264,97 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           </div>
         </Section>
 
+        {/* YouTube Cookies */}
+        <Section>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.cookies}
+            </label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.cookiesHelp}
+            </p>
+            <div className="flex gap-2">
+              {([
+                { mode: "none" as const, label: t.cookiesNone },
+                { mode: "browser" as const, label: t.cookiesFromBrowser },
+                { mode: "file" as const, label: t.cookiesFromFile },
+              ]).map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  onClick={() => setCookiesMode(mode)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config.cookies_mode === mode
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {config.cookies_mode === "browser" && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="cookies-browser"
+                className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                {t.cookiesBrowser}
+              </label>
+              <select
+                id="cookies-browser"
+                title={t.cookiesBrowser}
+                value={config.cookies_browser || "firefox"}
+                onChange={(e) =>
+                  setLocalConfig({ ...config, cookies_browser: e.target.value })
+                }
+                className={inputClass}
+              >
+                {COOKIE_BROWSERS.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {config.cookies_mode === "file" && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="cookies-file"
+                className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                {t.cookiesFile}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="cookies-file"
+                  type="text"
+                  value={config.cookies_file}
+                  onChange={(e) =>
+                    setLocalConfig({ ...config, cookies_file: e.target.value })
+                  }
+                  className={`flex-1 ${inputClass}`}
+                />
+                <button
+                  onClick={handlePickCookiesFile}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+                >
+                  {t.browse}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {config.cookies_mode !== "none" && (
+            <p className="text-xs text-amber-600 dark:text-amber-500">
+              {t.cookiesWarning}
+            </p>
+          )}
+        </Section>
+
         {/* Updates */}
         <Section>
           {/* Auto Update */}
@@ -338,6 +464,11 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
         </Section>
 
         {/* Actions */}
+        {saveError && (
+          <p className="text-sm text-red-500" role="alert">
+            {t.settingsSaveError}: {saveError}
+          </p>
+        )}
         <div className="flex gap-2 justify-end pt-2 pb-4">
           <button
             onClick={onClose}

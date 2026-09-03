@@ -77,12 +77,24 @@ export interface Translations {
   embedThumbnail: string;
   flipHebrewInTitle: string;
   metadata: string;
+  // cookies
+  cookies: string;
+  cookiesHelp: string;
+  cookiesNone: string;
+  cookiesFromBrowser: string;
+  cookiesFromFile: string;
+  cookiesBrowser: string;
+  cookiesFile: string;
+  cookiesWarning: string;
+  settingsSaveError: string;
   // yt-dlp error messages
   errVideoNotAvailable: string;
   errVideoUnavailable: string;
   errPrivateVideo: string;
   errAgeRestricted: string;
   errVideoRemoved: string;
+  errBotCheck: string;
+  errCookiesInvalid: string;
 }
 
 const en: Translations = {
@@ -153,11 +165,26 @@ const en: Translations = {
   embedThumbnail: "Embed Thumbnail",
   flipHebrewInTitle: "Flip Hebrew in Title",
   metadata: "Metadata",
+  cookies: "YouTube Cookies",
+  cookiesHelp:
+    "Use cookies from a signed-in YouTube session when YouTube asks you to confirm you're not a bot.",
+  cookiesNone: "None",
+  cookiesFromBrowser: "From browser",
+  cookiesFromFile: "cookies.txt file",
+  cookiesBrowser: "Browser",
+  cookiesFile: "Cookies file",
+  cookiesWarning:
+    "Cookies give this app access to your YouTube account. Prefer a throwaway account, and keep the cookies.txt file private.",
+  settingsSaveError: "Could not save settings",
   errVideoNotAvailable: "This video is not available",
   errVideoUnavailable: "Video unavailable",
   errPrivateVideo: "This is a private video",
   errAgeRestricted: "Age-restricted video — sign-in required",
   errVideoRemoved: "This video has been removed",
+  errBotCheck:
+    "YouTube asked to confirm you're not a bot. Open Settings → YouTube Cookies and supply cookies from your browser or a cookies.txt file (updating yt-dlp can help too).",
+  errCookiesInvalid:
+    "The YouTube cookies are no longer valid. Sign in to YouTube again and re-export them in Settings → YouTube Cookies.",
 };
 
 const he: Translations = {
@@ -228,11 +255,26 @@ const he: Translations = {
   embedThumbnail: "הטמע תמונה ממוזערת",
   flipHebrewInTitle: "הפוך עברית בכותרת",
   metadata: "מטא-דאטה",
+  cookies: "עוגיות YouTube",
+  cookiesHelp:
+    "השתמש בעוגיות מחשבון YouTube מחובר כאשר יוטיוב מבקש לאמת שאינך רובוט.",
+  cookiesNone: "ללא",
+  cookiesFromBrowser: "מהדפדפן",
+  cookiesFromFile: "קובץ cookies.txt",
+  cookiesBrowser: "דפדפן",
+  cookiesFile: "קובץ עוגיות",
+  cookiesWarning:
+    "העוגיות מעניקות לאפליקציה גישה לחשבון YouTube שלך. עדיף להשתמש בחשבון נפרד, ולשמור על קובץ ה-cookies.txt פרטי.",
+  settingsSaveError: "שמירת ההגדרות נכשלה",
   errVideoNotAvailable: "הסרטון אינו זמין",
   errVideoUnavailable: "הסרטון אינו זמין",
   errPrivateVideo: "זהו סרטון פרטי",
   errAgeRestricted: "סרטון מוגבל גיל — נדרשת התחברות",
   errVideoRemoved: "הסרטון הוסר",
+  errBotCheck:
+    "יוטיוב ביקש לאמת שאינך רובוט. פתח הגדרות ← עוגיות YouTube וספק עוגיות מהדפדפן או קובץ cookies.txt (גם עדכון yt-dlp עשוי לעזור).",
+  errCookiesInvalid:
+    "העוגיות של YouTube אינן תקפות עוד. התחבר שוב ליוטיוב וייצא אותן מחדש בהגדרות ← עוגיות YouTube.",
 };
 
 const locales: Record<Language, Translations> = { en, he };
@@ -257,6 +299,10 @@ const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
   [/Private video/i, "errPrivateVideo"],
   [/Sign in to confirm your age/i, "errAgeRestricted"],
   [/This video has been removed/i, "errVideoRemoved"],
+  // Curly or straight apostrophe, and yt-dlp keeps rewording the sentence,
+  // so match loosely on the distinctive part.
+  [/Sign in to confirm[\s\S]{0,20}not a bot/i, "errBotCheck"],
+  [/cookies are no longer valid/i, "errCookiesInvalid"],
 ];
 
 export function translateError(raw: string, t: Translations): string {

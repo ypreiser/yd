@@ -18,7 +18,7 @@ static PROGRESS_RE: LazyLock<Regex> =
 
 const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
 
-use crate::config::load_config;
+use crate::config::{load_config, AppConfig, ALLOWED_COOKIE_BROWSERS};
 use crate::hebrew::{contains_hebrew, reverse_hebrew};
 
 const MAX_CONCURRENT: usize = 5;
@@ -223,6 +223,39 @@ pub async fn check_binaries(app: tauri::AppHandle) -> Result<Vec<String>, String
     }
 
     Ok(missing)
+}
+
+/// Build the yt-dlp cookie flags for the current config.
+///
+/// YouTube answers plain requests with "Sign in to confirm you're not a bot"
+/// more and more often; passing cookies from a signed-in session is yt-dlp's
+/// documented way around it.
+///
+/// Values are re-validated here (not only in `set_config`) so a hand-edited or
+/// tampered config.json can never smuggle extra flags into the yt-dlp command
+/// line: the browser must be on the allowlist, and the cookie file must be an
+/// existing absolute path (which can never start with `-`).
+fn cookie_args(config: &AppConfig) -> Vec<String> {
+    match config.cookies_mode.as_str() {
+        "browser" => {
+            let browser = config.cookies_browser.trim();
+            if ALLOWED_COOKIE_BROWSERS.contains(&browser) {
+                vec!["--cookies-from-browser".to_string(), browser.to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        "file" => {
+            let raw = config.cookies_file.trim();
+            let path = std::path::Path::new(raw);
+            if path.is_absolute() && path.is_file() {
+                vec!["--cookies".to_string(), raw.to_string()]
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// Run yt-dlp with args and return (stdout, stderr, success)
@@ -638,12 +671,19 @@ pub async fn search_youtube(
     let query = query.trim_start_matches('-');
     let search_query = format!("ytsearch10:{}", query);
 
+    let cookies = cookie_args(&load_config(&app));
+
     let mut search_cmd = tokio::process::Command::new(ytdlp_path(&app));
+    search_cmd.args(&cookies);
+    // The PREF header only makes sense without real cookies — yt-dlp would
+    // otherwise drop it in favour of the cookie jar and warn about the clash.
+    if cookies.is_empty() {
+        search_cmd.args(["--add-header", "Cookie:PREF=f2=8000000"]);
+    }
     search_cmd
         .args([
             "--flat-playlist",
             "--no-download",
-            "--add-header", "Cookie:PREF=f2=8000000",
             "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
             &search_query,
         ])
@@ -734,17 +774,24 @@ pub async fn fetch_playlist(
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
 
-    let (stdout, stderr, success) = run_ytdlp(
-        &app,
-        &[
+    // Cookies (when configured) go first so they also cover the metadata fetch —
+    // playlist listing hits the same bot check as downloading does.
+    let mut args: Vec<String> = cookie_args(&load_config(&app));
+    args.extend(
+        [
             "--flat-playlist",
             "--no-download",
-            "--print", "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
-            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
-            &url,
-        ],
-    )
-    .await?;
+            "--print",
+            "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
+            "--print",
+            "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
+            url.as_str(),
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let (stdout, stderr, success) = run_ytdlp(&app, &arg_refs).await?;
 
     if !success {
         return Err(decode_output(&stderr));
@@ -868,6 +915,9 @@ pub async fn download(
         if config.embed_thumbnail {
             cmd.arg("--embed-thumbnail");
         }
+        // Cookies from a signed-in session, when configured — this is what gets
+        // past "Sign in to confirm you're not a bot".
+        cmd.args(cookie_args(&config));
         let result = cmd
             .args([
                 "-f", "bestaudio",
@@ -927,6 +977,10 @@ pub async fn download(
                 let mut title: Option<String> = None;
                 let mut filepath: Option<String> = None;
                 let mut last_stderr = String::new();
+                // yt-dlp can print warnings after the fatal error, so keep the
+                // first real ERROR line — that's what the UI maps to a friendly
+                // message (e.g. YouTube's "not a bot" check).
+                let mut first_error: Option<String> = None;
                 let mut already_exists = false;
 
                 while let Some((is_stderr, line)) = rx.recv().await {
@@ -934,6 +988,9 @@ pub async fn download(
 
                     if is_stderr && !line.is_empty() {
                         last_stderr = line.clone();
+                        if first_error.is_none() && line.starts_with("ERROR:") {
+                            first_error = Some(line.clone());
+                        }
                     }
 
                     if line.contains("has already been downloaded") {
@@ -1046,10 +1103,12 @@ pub async fn download(
                 } else {
                     (
                         "error".to_string(),
-                        Some(if last_stderr.is_empty() {
-                            format!("yt-dlp exited with code {:?}", exit_code)
-                        } else {
-                            last_stderr.clone()
+                        Some(match (&first_error, last_stderr.is_empty()) {
+                            (Some(err), _) => err.clone(),
+                            (None, false) => last_stderr.clone(),
+                            (None, true) => {
+                                format!("yt-dlp exited with code {:?}", exit_code)
+                            }
                         }),
                     )
                 };
@@ -1126,5 +1185,79 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
         Ok(())
     } else {
         Err("download not found or already finished".to_string())
+    }
+}
+
+
+#[cfg(test)]
+mod cookie_tests {
+    use super::cookie_args;
+    use crate::config::AppConfig;
+
+    fn config(mode: &str, browser: &str, file: &str) -> AppConfig {
+        AppConfig {
+            cookies_mode: mode.to_string(),
+            cookies_browser: browser.to_string(),
+            cookies_file: file.to_string(),
+            ..AppConfig::default()
+        }
+    }
+
+    #[test]
+    fn none_mode_adds_no_args() {
+        assert!(cookie_args(&config("none", "chrome", "")).is_empty());
+    }
+
+    #[test]
+    fn browser_mode_passes_allowlisted_browser() {
+        assert_eq!(
+            cookie_args(&config("browser", "firefox", "")),
+            vec!["--cookies-from-browser".to_string(), "firefox".to_string()]
+        );
+    }
+
+    #[test]
+    fn browser_mode_rejects_unknown_browser() {
+        assert!(cookie_args(&config("browser", "netscape", "")).is_empty());
+    }
+
+    #[test]
+    fn browser_mode_rejects_injected_flags() {
+        // A tampered config must not be able to append yt-dlp flags.
+        assert!(cookie_args(&config("browser", "chrome --exec calc.exe", "")).is_empty());
+        assert!(cookie_args(&config("browser", "--exec", "")).is_empty());
+    }
+
+    #[test]
+    fn file_mode_rejects_relative_or_missing_paths() {
+        assert!(cookie_args(&config("file", "", "cookies.txt")).is_empty());
+        assert!(cookie_args(&config("file", "", "-cookies.txt")).is_empty());
+        let missing = if cfg!(windows) {
+            "C:\\definitely\\missing\\cookies.txt"
+        } else {
+            "/definitely/missing/cookies.txt"
+        };
+        assert!(cookie_args(&config("file", "", missing)).is_empty());
+    }
+
+    #[test]
+    fn file_mode_passes_existing_absolute_path() {
+        let dir = std::env::temp_dir().join("yd_cookie_args_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("cookies.txt");
+        std::fs::write(&file, "# Netscape HTTP Cookie File\n").unwrap();
+        let path = file.to_string_lossy().to_string();
+
+        assert_eq!(
+            cookie_args(&config("file", "", &path)),
+            vec!["--cookies".to_string(), path.clone()]
+        );
+
+        std::fs::remove_file(&file).ok();
+    }
+
+    #[test]
+    fn unknown_mode_adds_no_args() {
+        assert!(cookie_args(&config("magic", "chrome", "")).is_empty());
     }
 }

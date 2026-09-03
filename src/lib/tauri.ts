@@ -10,7 +10,28 @@ export interface AppConfig {
   embed_title: boolean;
   embed_thumbnail: boolean;
   flip_hebrew_in_title: boolean;
+  /** How cookies reach yt-dlp — needed for YouTube's "not a bot" check. */
+  cookies_mode: CookiesMode;
+  /** Browser to read cookies from when cookies_mode === "browser". */
+  cookies_browser: string;
+  /** Absolute path to a cookies.txt when cookies_mode === "file". */
+  cookies_file: string;
 }
+
+export type CookiesMode = "none" | "browser" | "file";
+
+/** Browsers the Rust side accepts for --cookies-from-browser. */
+export const COOKIE_BROWSERS = [
+  "firefox",
+  "chrome",
+  "chromium",
+  "edge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "safari",
+  "whale",
+] as const;
 
 export interface DownloadProgress {
   id: string;

@@ -38,6 +38,38 @@ npm run tauri dev    # development
 npm run tauri build  # production (outputs MSI + NSIS installer)
 ```
 
+## Troubleshooting
+
+### `Sign in to confirm you're not a bot`
+
+YouTube throws this at requests that come from an unauthenticated session. Two
+things fix it, in order of effort:
+
+1. **Update yt-dlp** — Settings → yt-dlp Version → Check / Update. YouTube
+   changes its checks often and yt-dlp keeps up.
+2. **Give yt-dlp cookies from a signed-in session** — Settings → YouTube
+   Cookies:
+   - **From browser**: pick the browser you're signed in to YouTube with.
+     Firefox is the most reliable choice; on Windows, Chrome/Edge/Brave encrypt
+     their cookie store so yt-dlp often cannot read it, and the browser must be
+     fully closed while downloading.
+   - **cookies.txt file**: export cookies for `youtube.com` in Netscape format
+     with a browser extension and point the app at the file. This is the option
+     that always works, including on Windows.
+
+Cookie handling notes:
+
+- Cookies give this app the same access to YouTube as your logged-in browser.
+  Prefer a throwaway Google account over your main one.
+- Export from a private/incognito window that you close *without logging out*
+  after exporting — otherwise YouTube rotates the cookies and they stop working.
+- The cookies file is read by yt-dlp straight from the path you choose; the app
+  never copies, uploads or logs its contents. Keep the file somewhere only your
+  user account can read.
+- Only the browser names in the dropdown and an existing absolute file path are
+  accepted, so a hand-edited `config.json` can't turn these settings into extra
+  yt-dlp command-line flags.
+
 ## Screenshots
 
 <!-- TODO: Add screenshots -->
