@@ -98,18 +98,39 @@ describe("App", () => {
     });
   });
 
-  it("navigates to settings view when Settings button clicked", async () => {
+  it("opens settings as a drawer over the app when Settings is clicked", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
     });
+    // The app stays mounted behind the drawer instead of being replaced
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByText("No downloads yet")).toBeInTheDocument();
   });
 
-  it("navigates back to main when Back button clicked", async () => {
+  it("marks the settings toggle expanded while the drawer is open", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Back" })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      )
+    );
+  });
+
+  it("closes the drawer when Back is clicked", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
@@ -119,21 +140,49 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("textbox")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("clicking app title navigates back to main from settings", async () => {
+  it("closes the drawer when Escape is pressed", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await waitFor(() => screen.getByRole("heading", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("closes the drawer when the close button is clicked", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("dialog", { name: "Settings" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clicking the app title closes the drawer", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("dialog", { name: "Settings" });
 
     fireEvent.click(screen.getByText("YD"));
 
     await waitFor(() => {
-      expect(screen.getByRole("textbox")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
