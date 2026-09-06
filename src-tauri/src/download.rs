@@ -23,6 +23,28 @@ use crate::hebrew::{contains_hebrew, reverse_hebrew};
 
 const MAX_CONCURRENT: usize = 5;
 
+/// Pace requests so a batch does not look like a scraper.
+///
+/// Five parallel downloads hammering YouTube is exactly the pattern that earns
+/// "Sign in to confirm you're not a bot". A second between metadata requests and
+/// a short random gap before each download costs almost nothing on a single
+/// download and materially reduces how often a batch trips the check. Retries
+/// cover the transient 403/timeout that used to fail a download outright.
+const PACING_ARGS: &[&str] = &[
+    "--sleep-requests",
+    "1",
+    "--min-sleep-interval",
+    "1",
+    "--max-sleep-interval",
+    "5",
+    "--retries",
+    "5",
+    "--fragment-retries",
+    "10",
+    "--retry-sleep",
+    "exp=1:30",
+];
+
 // --- yt-dlp path resolution ---
 
 fn ytdlp_path(app: &tauri::AppHandle) -> PathBuf {
@@ -695,6 +717,8 @@ pub async fn search_youtube(
 
     let mut search_cmd = tokio::process::Command::new(ytdlp_path(&app));
     search_cmd.args(&cookies);
+    // Search is interactive — pace requests, but never sleep before them.
+    search_cmd.args(["--sleep-requests", "1", "--retries", "3"]);
     // The PREF header only makes sense without real cookies — yt-dlp would
     // otherwise drop it in favour of the cookie jar and warn about the clash.
     if cookies.is_empty() {
@@ -936,6 +960,7 @@ pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, Stri
         // Cookies from a signed-in session, when configured — this is what gets
         // past "Sign in to confirm you're not a bot".
         cmd.args(cookie_args(&config));
+        cmd.args(PACING_ARGS);
         let result = cmd
             .args([
                 // A watch URL carrying &list= would otherwise pull the whole

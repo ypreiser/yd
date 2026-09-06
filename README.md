@@ -86,6 +86,14 @@ Cookie handling notes:
   accepted, so a hand-edited `config.json` can't turn these settings into extra
   yt-dlp command-line flags.
 
+## Avoiding the bot check
+
+Beyond cookies, the app paces its own requests: one second between metadata
+requests, a 1-5 second random gap before each download, and exponential-backoff
+retries. Batches of five parallel downloads are what trips YouTube's bot check
+most often, and pacing them costs a few seconds while making the check much
+rarer.
+
 ## Reporting a problem
 
 Settings → **Report a Problem**:
