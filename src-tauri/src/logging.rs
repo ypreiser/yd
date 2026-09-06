@@ -51,7 +51,7 @@ fn format_utc(unix_secs: u64) -> String {
 
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as i64; // [0, 146096]
+    let doe = z - era * 146_097; // [0, 146096]
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
     let mp = (5 * doy + 2) / 153; // [0, 11]
@@ -81,8 +81,12 @@ pub fn redact(input: &str) -> String {
     // line ending does not become two spaces).
     let mut out = input.replace("\r\n", " ").replace(['\n', '\r'], " ");
 
-    out = COOKIE_FLAG_RE.replace_all(&out, "$1 <redacted>").to_string();
-    out = COOKIE_HEADER_RE.replace_all(&out, "$1 <redacted>").to_string();
+    out = COOKIE_FLAG_RE
+        .replace_all(&out, "$1 <redacted>")
+        .to_string();
+    out = COOKIE_HEADER_RE
+        .replace_all(&out, "$1 <redacted>")
+        .to_string();
 
     if let Some(home) = dirs::home_dir() {
         let home_str = home.to_string_lossy().to_string();

@@ -99,15 +99,15 @@ fn ffmpeg_location() -> String {
 fn sanitize_windows_filename(s: &str) -> String {
     s.chars()
         .map(|c| match c {
-            '"'  => '\u{FF02}', // ＂
-            '*'  => '\u{FF0A}', // ＊
-            ':'  => '\u{FF1A}', // ：
-            '<'  => '\u{FF1C}', // ＜
-            '>'  => '\u{FF1E}', // ＞
-            '?'  => '\u{FF1F}', // ？
+            '"' => '\u{FF02}',  // ＂
+            '*' => '\u{FF0A}',  // ＊
+            ':' => '\u{FF1A}',  // ：
+            '<' => '\u{FF1C}',  // ＜
+            '>' => '\u{FF1E}',  // ＞
+            '?' => '\u{FF1F}',  // ？
             '\\' => '\u{FF3C}', // ＼
-            '|'  => '\u{FF5C}', // ｜
-            '/'  => '\u{FF0F}', // ／
+            '|' => '\u{FF5C}',  // ｜
+            '/' => '\u{FF0F}',  // ／
             _ => c,
         })
         .collect()
@@ -126,7 +126,8 @@ async fn embed_title_tag(
     };
 
     let ffmpeg_bin = if cfg!(windows) {
-        let with_triple = std::path::Path::new(ffmpeg_dir).join("ffmpeg-x86_64-pc-windows-msvc.exe");
+        let with_triple =
+            std::path::Path::new(ffmpeg_dir).join("ffmpeg-x86_64-pc-windows-msvc.exe");
         if with_triple.exists() {
             with_triple
         } else {
@@ -146,11 +147,17 @@ async fn embed_title_tag(
     let mut ffmpeg_cmd = tokio::process::Command::new(&ffmpeg_bin);
     ffmpeg_cmd
         .args([
-            "-nostdin", "-i", &input_path,
-            "-map", "0",
-            "-metadata", &metadata_arg,
-            "-codec", "copy",
-            "-y", &temp_str,
+            "-nostdin",
+            "-i",
+            &input_path,
+            "-map",
+            "0",
+            "-metadata",
+            &metadata_arg,
+            "-codec",
+            "copy",
+            "-y",
+            &temp_str,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -171,11 +178,17 @@ async fn embed_title_tag(
         let mut ffmpeg_cmd2 = tokio::process::Command::new(&ffmpeg_bin);
         ffmpeg_cmd2
             .args([
-                "-nostdin", "-i", &input_path,
-                "-map", "0:a",
-                "-metadata", &metadata_arg,
-                "-codec", "copy",
-                "-y", &temp_str,
+                "-nostdin",
+                "-i",
+                &input_path,
+                "-map",
+                "0:a",
+                "-metadata",
+                &metadata_arg,
+                "-codec",
+                "copy",
+                "-y",
+                &temp_str,
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -272,10 +285,7 @@ async fn run_ytdlp(
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let output = cmd.output().await.map_err(|e| e.to_string())?;
 
     Ok((output.stdout, output.stderr, output.status.success()))
 }
@@ -310,17 +320,17 @@ fn decode_output(bytes: &[u8]) -> String {
         };
 
         unsafe {
-            let wide_len = MultiByteToWideChar(
-                CP_ACP, 0,
-                bytes.as_ptr(), src_len,
-                std::ptr::null_mut(), 0,
-            );
+            let wide_len =
+                MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), src_len, std::ptr::null_mut(), 0);
             if wide_len > 0 {
                 let mut wide = vec![0u16; wide_len as usize];
                 MultiByteToWideChar(
-                    CP_ACP, 0,
-                    bytes.as_ptr(), src_len,
-                    wide.as_mut_ptr(), wide_len,
+                    CP_ACP,
+                    0,
+                    bytes.as_ptr(),
+                    src_len,
+                    wide.as_mut_ptr(),
+                    wide_len,
                 );
                 return OsString::from_wide(&wide).to_string_lossy().to_string();
             }
@@ -439,7 +449,11 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
     let parse = |v: &str| -> Option<(u32, u32, u32)> {
         let parts: Vec<&str> = v.split('.').collect();
         if parts.len() >= 3 {
-            Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+            Some((
+                parts[0].parse().ok()?,
+                parts[1].parse().ok()?,
+                parts[2].parse().ok()?,
+            ))
         } else {
             None
         }
@@ -488,9 +502,8 @@ pub async fn check_disk_space(path: String) -> Result<u64, String> {
         let mut _total: u64 = 0;
         let mut _total_free: u64 = 0;
 
-        let result = unsafe {
-            GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut _total, &mut _total_free)
-        };
+        let result =
+            unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut _total, &mut _total_free) };
 
         if result == 0 {
             return Err("Failed to check disk space".to_string());
@@ -511,7 +524,7 @@ pub async fn check_disk_space(path: String) -> Result<u64, String> {
             return Err("Failed to check disk space".to_string());
         }
 
-        Ok(stat.f_bavail as u64 * stat.f_frsize as u64)
+        Ok(stat.f_bavail * stat.f_frsize)
     }
 }
 
@@ -544,11 +557,8 @@ pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo
         .await
         .map_err(|e| e.to_string())?;
 
-    let latest: String = resp["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    
+    let latest: String = resp["tag_name"].as_str().unwrap_or("").to_string();
+
     let update_available = !latest.is_empty() && version_is_newer(&latest, &current);
 
     Ok(YtdlpUpdateInfo {
@@ -564,11 +574,20 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     std::fs::create_dir_all(&app_data).ok();
 
     let (download_url, binary_name) = if cfg!(windows) {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", "yt-dlp.exe")
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+            "yt-dlp.exe",
+        )
     } else if cfg!(target_os = "macos") {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos", "yt-dlp_macos") 
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
+            "yt-dlp_macos",
+        )
     } else {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", "yt-dlp")
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+            "yt-dlp",
+        )
     };
 
     let path: PathBuf = if cfg!(windows) {
@@ -609,7 +628,7 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     // Verify checksum before writing
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let hash = format!("{:x}", Sha256::digest(&bytes));
     if hash != expected_hash {
         return Err(format!(
@@ -625,7 +644,8 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755)) {
+        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
+        {
             let _ = std::fs::remove_file(&temp_path);
             return Err(e.to_string());
         }
@@ -684,7 +704,8 @@ pub async fn search_youtube(
         .args([
             "--flat-playlist",
             "--no-download",
-            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
+            "--print",
+            "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
             &search_query,
         ])
         .env("PYTHONUTF8", "1")
@@ -694,9 +715,7 @@ pub async fn search_youtube(
     {
         search_cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let child = search_cmd
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let child = search_cmd.spawn().map_err(|e| e.to_string())?;
 
     // Track PID for cancellation
     let pid = child.id().unwrap_or(0);
@@ -716,7 +735,8 @@ pub async fn search_youtube(
         }
     }
 
-    let (stdout_bytes, stderr_bytes, success) = (output.stdout, output.stderr, output.status.success());
+    let (stdout_bytes, stderr_bytes, success) =
+        (output.stdout, output.stderr, output.status.success());
 
     if !success {
         let err = decode_output(&stderr_bytes);
@@ -768,10 +788,7 @@ pub async fn search_youtube(
 }
 
 #[tauri::command]
-pub async fn fetch_playlist(
-    app: tauri::AppHandle,
-    url: String,
-) -> Result<PlaylistInfo, String> {
+pub async fn fetch_playlist(app: tauri::AppHandle, url: String) -> Result<PlaylistInfo, String> {
     if !is_valid_youtube_url(&url) {
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
@@ -855,10 +872,7 @@ pub async fn fetch_playlist(
 }
 
 #[tauri::command]
-pub async fn download(
-    app: tauri::AppHandle,
-    url: String,
-) -> Result<String, String> {
+pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, String> {
     if !is_valid_youtube_url(&url) {
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
@@ -924,7 +938,8 @@ pub async fn download(
         cmd.args(cookie_args(&config));
         let result = cmd
             .args([
-                "-f", "bestaudio",
+                "-f",
+                "bestaudio",
                 "--recode-video",
                 &config.audio_format,
                 "--newline",
@@ -932,8 +947,10 @@ pub async fn download(
                 "--windows-filenames",
                 "--ffmpeg-location",
                 &ffmpeg_path,
-                "--print", "before_dl:YTDL_TITLE:%(title)s",
-                "--print", "after_move:YTDL_FILEPATH:%(filepath)s",
+                "--print",
+                "before_dl:YTDL_TITLE:%(title)s",
+                "--print",
+                "after_move:YTDL_FILEPATH:%(filepath)s",
                 "-o",
                 &output_template,
                 &url_clone,
@@ -1015,7 +1032,10 @@ pub async fn download(
 
                     if let Some(caps) = PROGRESS_RE.captures(&line) {
                         if let Ok(pct) = caps[1].parse::<f64>() {
-                            let status = if line.contains("[ExtractAudio]") || line.contains("[VideoConvertor]") || line.contains("Post-process") {
+                            let status = if line.contains("[ExtractAudio]")
+                                || line.contains("[VideoConvertor]")
+                                || line.contains("Post-process")
+                            {
                                 "converting"
                             } else {
                                 "downloading"
@@ -1062,11 +1082,13 @@ pub async fn download(
                         // Try yt-dlp's reported filepath first; if it doesn't exist,
                         // reconstruct using the same fullwidth-char sanitization yt-dlp
                         // applies with --windows-filenames
-                        let mut file_path = filepath.as_ref().map(|p| PathBuf::from(p));
+                        let mut file_path = filepath.as_ref().map(PathBuf::from);
                         if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
                             let sanitized = sanitize_windows_filename(t);
-                            file_path = Some(PathBuf::from(&config.download_dir)
-                                .join(format!("{}.{}", sanitized, &config.audio_format)));
+                            file_path = Some(
+                                PathBuf::from(&config.download_dir)
+                                    .join(format!("{}.{}", sanitized, &config.audio_format)),
+                            );
                         }
                         // Fallback: prefix search for encoding edge cases (e.g. é lost in pipe)
                         if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
@@ -1090,7 +1112,9 @@ pub async fn download(
                                     t,
                                     &ffmpeg_path,
                                     config.flip_hebrew_in_title,
-                                ).await {
+                                )
+                                .await
+                                {
                                     eprintln!("embed_title_tag failed: {}", e);
                                 }
                             }
@@ -1196,7 +1220,6 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
         Err("download not found or already finished".to_string())
     }
 }
-
 
 #[cfg(test)]
 mod cookie_tests {

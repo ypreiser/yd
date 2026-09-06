@@ -33,6 +33,19 @@ Place these in `src-tauri/binaries/`:
 1. **yt-dlp**: Download from [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases/latest) → `yt-dlp.exe` → rename to `yt-dlp-x86_64-pc-windows-msvc.exe`
 2. **ffmpeg + ffprobe**: Download from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) → extract `ffmpeg.exe` and `ffprobe.exe` → rename to `ffmpeg-x86_64-pc-windows-msvc.exe` and `ffprobe-x86_64-pc-windows-msvc.exe`
 
+### Checks
+
+```bash
+npx tsc --noEmit          # types
+npm test                  # unit tests (vitest)
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+CI (`.github/workflows/ci.yml`) runs all of these on every push to `main` and
+every pull request. The Rust job runs on Windows, the shipped target.
+
 ### Build & run
 
 ```bash
