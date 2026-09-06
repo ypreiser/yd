@@ -938,8 +938,12 @@ pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, Stri
         cmd.args(cookie_args(&config));
         let result = cmd
             .args([
+                // A watch URL carrying &list= would otherwise pull the whole
+                // playlist under this one progress row. Playlists have their own
+                // flow (fetch_playlist + the picker), which queues each entry.
+                "--no-playlist",
                 "-f",
-                "bestaudio",
+                "bestaudio/best",
                 "--recode-video",
                 &config.audio_format,
                 "--newline",
