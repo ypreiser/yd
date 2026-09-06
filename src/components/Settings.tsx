@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { AppConfig, CookiesMode } from "../lib/tauri";
@@ -19,6 +19,8 @@ import { getVersion } from "@tauri-apps/api/app";
 interface SettingsProps {
   onClose: () => void;
   onConfigSaved: (config: AppConfig) => void;
+  /** Scroll to and highlight a section — used when opened from an error. */
+  focusSection?: "cookies" | null;
 }
 
 const AUDIO_FORMATS = ["m4a", "mp3", "opus", "flac"];
@@ -45,16 +47,36 @@ function Steps({ title, steps }: { title: string; steps: string[] }) {
   );
 }
 
-function Section({ children }: { children: React.ReactNode }) {
+function Section({
+  children,
+  innerRef,
+  highlighted = false,
+}: {
+  children: React.ReactNode;
+  innerRef?: React.Ref<HTMLDivElement>;
+  highlighted?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-white dark:bg-zinc-800/30 p-4 flex flex-col gap-4">
+    <div
+      ref={innerRef}
+      className={`rounded-lg border bg-white dark:bg-zinc-800/30 p-4 flex flex-col gap-4 transition-colors ${
+        highlighted
+          ? "border-indigo-500 ring-2 ring-indigo-500/25"
+          : "border-zinc-200 dark:border-zinc-700/50"
+      }`}
+    >
       {children}
     </div>
   );
 }
 
-export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
+export default function Settings({
+  onClose,
+  onConfigSaved,
+  focusSection = null,
+}: SettingsProps) {
   const t = useT();
+  const cookiesRef = useRef<HTMLDivElement>(null);
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -117,6 +139,14 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
     setLogEntries(0);
     setReport(null);
   }
+
+  // Opened from a "not a bot" error: put the cookie settings in front of the
+  // user instead of making them find the section.
+  useEffect(() => {
+    if (focusSection !== "cookies" || !config) return;
+    // Optional call: not every webview (or test environment) implements it.
+    cookiesRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [focusSection, config]);
 
   async function handlePickDir() {
     const dir = await open({ directory: true, multiple: false });
@@ -336,7 +366,10 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
         </Section>
 
         {/* YouTube Cookies */}
-        <Section>
+        <Section
+          innerRef={cookiesRef}
+          highlighted={focusSection === "cookies"}
+        >
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
               {t.cookies}
@@ -425,7 +458,10 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
             </p>
           )}
 
-          <details className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 p-3">
+          <details
+            open={focusSection === "cookies"}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 p-3"
+          >
             <summary className="cursor-pointer text-sm font-medium text-zinc-600 dark:text-zinc-300">
               {t.cookiesHowTo}
             </summary>

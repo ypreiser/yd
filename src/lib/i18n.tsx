@@ -109,6 +109,11 @@ export interface Translations {
   clearLog: string;
   logEntries: (n: number) => string;
   reportError: string;
+  // inline fixes for the bot check
+  fixUpdateYtdlp: string;
+  fixCookies: string;
+  fixUpdating: string;
+  fixUpdateFailed: string;
   // yt-dlp error messages
   errVideoNotAvailable: string;
   errVideoUnavailable: string;
@@ -230,6 +235,10 @@ const en: Translations = {
   clearLog: "Clear log",
   logEntries: (n) => `${n} logged errors`,
   reportError: "Could not build the report",
+  fixUpdateYtdlp: "Update yt-dlp & retry",
+  fixCookies: "Set up cookies",
+  fixUpdating: "Updating yt-dlp...",
+  fixUpdateFailed: "Update failed",
   errVideoNotAvailable: "This video is not available",
   errVideoUnavailable: "Video unavailable",
   errPrivateVideo: "This is a private video",
@@ -352,6 +361,10 @@ const he: Translations = {
   clearLog: "נקה יומן",
   logEntries: (n) => `${n} שגיאות ביומן`,
   reportError: "בניית הדוח נכשלה",
+  fixUpdateYtdlp: "עדכן yt-dlp ונסה שוב",
+  fixCookies: "הגדר עוגיות",
+  fixUpdating: "מעדכן yt-dlp...",
+  fixUpdateFailed: "העדכון נכשל",
   errVideoNotAvailable: "הסרטון אינו זמין",
   errVideoUnavailable: "הסרטון אינו זמין",
   errPrivateVideo: "זהו סרטון פרטי",
@@ -390,6 +403,23 @@ const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
   [/Sign in to confirm[\s\S]{0,20}not a bot/i, "errBotCheck"],
   [/cookies are no longer valid/i, "errCookiesInvalid"],
 ];
+
+/**
+ * Errors the user can act on from the download row itself.
+ * `null` means "nothing to offer beyond a plain retry".
+ */
+export type FixableError = "auth" | null;
+
+const AUTH_ERROR_KEYS: (keyof Translations)[] = ["errBotCheck", "errCookiesInvalid"];
+
+export function classifyError(raw: string): FixableError {
+  for (const [pattern, key] of ERROR_PATTERNS) {
+    if (pattern.test(raw)) {
+      return AUTH_ERROR_KEYS.includes(key) ? "auth" : null;
+    }
+  }
+  return null;
+}
 
 export function translateError(raw: string, t: Translations): string {
   for (const [pattern, key] of ERROR_PATTERNS) {

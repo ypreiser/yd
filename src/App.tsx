@@ -203,9 +203,11 @@ function Header({
  * where you were. Mounted only while open, so it reloads config each time.
  */
 function SettingsDrawer({
+  section,
   onClose,
   onConfigSaved,
 }: {
+  section: "cookies" | null;
   onClose: () => void;
   onConfigSaved: (config: AppConfig) => void;
 }) {
@@ -269,7 +271,11 @@ function SettingsDrawer({
         </div>
         {/* Settings scrolls its own body, so the drawer must not scroll too. */}
         <div className="flex-1 min-h-0 flex flex-col px-4 pt-3">
-          <Settings onClose={onClose} onConfigSaved={onConfigSaved} />
+          <Settings
+            focusSection={section}
+            onClose={onClose}
+            onConfigSaved={onConfigSaved}
+          />
         </div>
       </div>
     </>
@@ -278,6 +284,8 @@ function SettingsDrawer({
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Set when the drawer is opened from an auth error, so it lands on cookies.
+  const [settingsSection, setSettingsSection] = useState<"cookies" | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("url");
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(
     new Map(),
@@ -405,7 +413,10 @@ function App() {
         <UpdateBanner />
         <Header
           settingsOpen={settingsOpen}
-          toggleSettings={() => setSettingsOpen((open) => !open)}
+          toggleSettings={() => {
+            setSettingsSection(null);
+            setSettingsOpen((open) => !open);
+          }}
           closeSettings={() => setSettingsOpen(false)}
         />
         <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0">
@@ -440,10 +451,19 @@ function App() {
           ) : (
             <SearchBar onDownload={handleSubmit} />
           )}
-          <DownloadList items={items} onClear={handleClear} onRetry={handleRetry} />
+          <DownloadList
+            items={items}
+            onClear={handleClear}
+            onRetry={handleRetry}
+            onFixCookies={() => {
+              setSettingsSection("cookies");
+              setSettingsOpen(true);
+            }}
+          />
         </div>
         {settingsOpen && (
           <SettingsDrawer
+            section={settingsSection}
             onClose={() => setSettingsOpen(false)}
             onConfigSaved={handleConfigSaved}
           />

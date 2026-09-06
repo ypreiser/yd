@@ -9,10 +9,18 @@ import { DEFAULT_CONFIG } from "../setup";
 
 const t = getTranslations("en");
 
-function renderSettings(onClose = vi.fn(), onConfigSaved = vi.fn()) {
+function renderSettings(
+  onClose = vi.fn(),
+  onConfigSaved = vi.fn(),
+  focusSection: "cookies" | null = null
+) {
   return render(
     <I18nContext.Provider value={t}>
-      <Settings onClose={onClose} onConfigSaved={onConfigSaved} />
+      <Settings
+        onClose={onClose}
+        onConfigSaved={onConfigSaved}
+        focusSection={focusSection}
+      />
     </I18nContext.Provider>
   );
 }
@@ -456,6 +464,31 @@ describe("Settings", () => {
       fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
 
       expect(await screen.findByText(t.reportError)).toBeInTheDocument();
+    });
+  });
+
+  describe("opened from an auth error", () => {
+    it("expands the cookie instructions when focused on cookies", async () => {
+      renderSettings(vi.fn(), vi.fn(), "cookies");
+
+      const details = (await screen.findByText(t.cookiesHowTo)).closest("details");
+      expect(details).toHaveAttribute("open");
+    });
+
+    it("leaves the instructions collapsed otherwise", async () => {
+      renderSettings();
+
+      const details = (await screen.findByText(t.cookiesHowTo)).closest("details");
+      expect(details).not.toHaveAttribute("open");
+    });
+
+    it("scrolls the cookie section into view", async () => {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      renderSettings(vi.fn(), vi.fn(), "cookies");
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     });
   });
 });
