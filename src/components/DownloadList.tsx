@@ -6,9 +6,10 @@ interface DownloadListProps {
   items: DownloadProgress[];
   onClear?: () => void;
   onRetry?: (url: string) => void;
+  onFixCookies?: () => void;
 }
 
-export default function DownloadList({ items, onClear, onRetry }: DownloadListProps) {
+export default function DownloadList({ items, onClear, onRetry, onFixCookies }: DownloadListProps) {
   const t = useT();
 
   const hasFinished = items.some(
@@ -39,7 +40,12 @@ export default function DownloadList({ items, onClear, onRetry }: DownloadListPr
         </button>
       )}
       {items.map((item) => (
-        <DownloadItem key={item.id} item={item} onRetry={onRetry} />
+        <DownloadItem
+          key={item.id}
+          item={item}
+          onRetry={onRetry}
+          onFixCookies={onFixCookies}
+        />
       ))}
     </div>
   );

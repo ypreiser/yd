@@ -77,12 +77,70 @@ export interface Translations {
   embedThumbnail: string;
   flipHebrewInTitle: string;
   metadata: string;
+  // history
+  history: string;
+  historyEmpty: string;
+  redownload: string;
+  removeFromHistory: string;
+  clearHistory: string;
+  showInFolder: string;
+  // cookies
+  cookies: string;
+  cookiesHelp: string;
+  cookiesNone: string;
+  cookiesFromBrowser: string;
+  cookiesFromFile: string;
+  cookiesBrowser: string;
+  cookiesFile: string;
+  cookiesWarning: string;
+  settingsSaveError: string;
+  // connection
+  connection: string;
+  online: string;
+  offline: string;
+  youtubeUnreachable: string;
+  offlineBanner: string;
+  youtubeUnreachableBanner: string;
+  // cookie instructions
+  cookiesHowTo: string;
+  cookiesStepsBrowser: string[];
+  cookiesStepsFile: string[];
+  cookiesGuideLink: string;
+  cookiesChromiumWarning: string;
+  cookiesTest: string;
+  cookiesTesting: string;
+  cookiesTestOk: string;
+  cookiesTestNone: string;
+  cookiesTestDecryptFailed: string;
+  cookiesTestNotFound: string;
+  cookiesTestBlocked: string;
+  cookiesTestError: string;
+  // problem reports
+  reportProblem: string;
+  reportHelp: string;
+  prepareReport: string;
+  reportConsent: string;
+  copyReport: string;
+  reportCopied: string;
+  openGithubIssue: string;
+  openLogFolder: string;
+  clearLog: string;
+  logEntries: (n: number) => string;
+  reportError: string;
+  // inline fixes for the bot check
+  fixUpdateYtdlp: string;
+  fixCookies: string;
+  fixUpdating: string;
+  fixUpdateFailed: string;
   // yt-dlp error messages
   errVideoNotAvailable: string;
   errVideoUnavailable: string;
   errPrivateVideo: string;
   errAgeRestricted: string;
   errVideoRemoved: string;
+  errBotCheck: string;
+  errCookiesInvalid: string;
+  errCookieDecrypt: string;
 }
 
 const en: Translations = {
@@ -153,11 +211,86 @@ const en: Translations = {
   embedThumbnail: "Embed Thumbnail",
   flipHebrewInTitle: "Flip Hebrew in Title",
   metadata: "Metadata",
+  history: "History",
+  historyEmpty: "Nothing downloaded yet",
+  redownload: "Download again",
+  removeFromHistory: "Remove from history",
+  clearHistory: "Clear history",
+  showInFolder: "Show in folder",
+  cookies: "YouTube Cookies",
+  cookiesHelp:
+    "Use cookies from a signed-in YouTube session when YouTube asks you to confirm you're not a bot.",
+  cookiesNone: "None",
+  cookiesFromBrowser: "From browser",
+  cookiesFromFile: "cookies.txt file",
+  cookiesBrowser: "Browser",
+  cookiesFile: "Cookies file",
+  cookiesWarning:
+    "Cookies give this app access to your YouTube account. Prefer a throwaway account, and keep the cookies.txt file private.",
+  settingsSaveError: "Could not save settings",
+  connection: "Connection",
+  online: "Online",
+  offline: "Offline",
+  youtubeUnreachable: "YouTube unreachable",
+  offlineBanner: "No internet connection — downloads will fail until it comes back.",
+  youtubeUnreachableBanner:
+    "YouTube is not reachable from this network, though the internet is. Downloads will fail until that changes.",
+  cookiesHowTo: "How do I get cookies?",
+  cookiesStepsBrowser: [
+    "Sign in to YouTube in the browser you pick below.",
+    "Close that browser completely — it locks its cookie database while running.",
+    "Pick the browser and press Save, then start a download.",
+    "On Windows, Chrome/Edge/Brave/Opera/Vivaldi will NOT work: they encrypt cookies so only the browser can read them. Firefox works; otherwise use the cookies.txt option.",
+  ],
+  cookiesStepsFile: [
+    "Install a cookies.txt exporter extension in your browser (search the store for \"Get cookies.txt\").",
+    "Open a private/incognito window and sign in to youtube.com there.",
+    "Play any video for a second, then export cookies for youtube.com to a .txt file.",
+    "Close the private window WITHOUT logging out — logging out invalidates the cookies you just saved.",
+    "Press Browse below, pick the file, and Save.",
+  ],
+  cookiesGuideLink: "yt-dlp cookie export guide",
+  cookiesChromiumWarning:
+    "On Windows this browser encrypts its cookies so only the browser itself can read them (app-bound encryption, Chrome 127+). yt-dlp fails with \"Failed to decrypt with DPAPI\". Use Firefox, or export a cookies.txt file.",
+  cookiesTest: "Test cookies",
+  cookiesTesting: "Testing...",
+  cookiesTestOk: "Cookies work",
+  cookiesTestNone: "No cookies configured",
+  cookiesTestDecryptFailed:
+    "Cookies were found but could not be decrypted — this browser's cookie store is locked to the browser itself on Windows. Use Firefox, or export a cookies.txt file.",
+  cookiesTestNotFound:
+    "No cookie store found for that browser. Is it installed and signed in to YouTube?",
+  cookiesTestBlocked:
+    "The cookies loaded, but YouTube still asked for verification. Sign in to YouTube in that browser and export again.",
+  cookiesTestError: "The cookie test failed",
+  reportProblem: "Report a Problem",
+  reportHelp:
+    "Errors are written to a local log file. Nothing is sent anywhere unless you choose to send it.",
+  prepareReport: "Prepare report",
+  reportConsent:
+    "Review the report below. \"Open GitHub issue\" opens your browser with this text pre-filled — you still choose to submit it.",
+  copyReport: "Copy",
+  reportCopied: "Copied",
+  openGithubIssue: "Open GitHub issue",
+  openLogFolder: "Open log folder",
+  clearLog: "Clear log",
+  logEntries: (n) => `${n} logged errors`,
+  reportError: "Could not build the report",
+  fixUpdateYtdlp: "Update yt-dlp & retry",
+  fixCookies: "Set up cookies",
+  fixUpdating: "Updating yt-dlp...",
+  fixUpdateFailed: "Update failed",
   errVideoNotAvailable: "This video is not available",
   errVideoUnavailable: "Video unavailable",
   errPrivateVideo: "This is a private video",
   errAgeRestricted: "Age-restricted video — sign-in required",
   errVideoRemoved: "This video has been removed",
+  errBotCheck:
+    "YouTube asked to confirm you're not a bot. Open Settings → YouTube Cookies and supply cookies from your browser or a cookies.txt file (updating yt-dlp can help too).",
+  errCookiesInvalid:
+    "The YouTube cookies are no longer valid. Sign in to YouTube again and re-export them in Settings → YouTube Cookies.",
+  errCookieDecrypt:
+    "Your browser's cookies could not be decrypted — on Windows, Chromium browsers lock their cookie store to the browser itself. Switch to Firefox or a cookies.txt file in Settings → YouTube Cookies.",
 };
 
 const he: Translations = {
@@ -228,11 +361,86 @@ const he: Translations = {
   embedThumbnail: "הטמע תמונה ממוזערת",
   flipHebrewInTitle: "הפוך עברית בכותרת",
   metadata: "מטא-דאטה",
+  history: "היסטוריה",
+  historyEmpty: "עדיין לא הורדת כלום",
+  redownload: "הורד שוב",
+  removeFromHistory: "הסר מההיסטוריה",
+  clearHistory: "נקה היסטוריה",
+  showInFolder: "הצג בתיקייה",
+  cookies: "עוגיות YouTube",
+  cookiesHelp:
+    "השתמש בעוגיות מחשבון YouTube מחובר כאשר יוטיוב מבקש לאמת שאינך רובוט.",
+  cookiesNone: "ללא",
+  cookiesFromBrowser: "מהדפדפן",
+  cookiesFromFile: "קובץ cookies.txt",
+  cookiesBrowser: "דפדפן",
+  cookiesFile: "קובץ עוגיות",
+  cookiesWarning:
+    "העוגיות מעניקות לאפליקציה גישה לחשבון YouTube שלך. עדיף להשתמש בחשבון נפרד, ולשמור על קובץ ה-cookies.txt פרטי.",
+  settingsSaveError: "שמירת ההגדרות נכשלה",
+  connection: "חיבור",
+  online: "מחובר",
+  offline: "לא מחובר",
+  youtubeUnreachable: "אין גישה ליוטיוב",
+  offlineBanner: "אין חיבור לאינטרנט — הורדות ייכשלו עד שהחיבור יחזור.",
+  youtubeUnreachableBanner:
+    "יוטיוב אינו נגיש מהרשת הזו, למרות שיש אינטרנט. הורדות ייכשלו עד שזה ישתנה.",
+  cookiesHowTo: "איך משיגים עוגיות?",
+  cookiesStepsBrowser: [
+    "התחבר ליוטיוב בדפדפן שתבחר למטה.",
+    "סגור את הדפדפן לגמרי — כל עוד הוא פועל הוא נועל את מסד העוגיות.",
+    "בחר את הדפדפן, לחץ שמירה והתחל הורדה.",
+    "בחלונות, Chrome/Edge/Brave/Opera/Vivaldi לא יעבדו: הם מצפינים את העוגיות כך שרק הדפדפן יכול לקרוא אותן. Firefox עובד; אחרת השתמש בקובץ cookies.txt.",
+  ],
+  cookiesStepsFile: [
+    "התקן בדפדפן תוסף לייצוא cookies.txt (חפש בחנות \"Get cookies.txt\").",
+    "פתח חלון פרטי/גלישה בסתר והתחבר שם ל-youtube.com.",
+    "הפעל סרטון כלשהו לרגע, ואז ייצא את העוגיות של youtube.com לקובץ txt.",
+    "סגור את החלון הפרטי בלי להתנתק — התנתקות מבטלת את העוגיות שייצאת.",
+    "לחץ עיון למטה, בחר את הקובץ ושמור.",
+  ],
+  cookiesGuideLink: "מדריך ייצוא עוגיות של yt-dlp",
+  cookiesChromiumWarning:
+    "בחלונות הדפדפן הזה מצפין את העוגיות כך שרק הוא עצמו יכול לקרוא אותן (app-bound encryption, Chrome 127+). yt-dlp נכשל עם \"Failed to decrypt with DPAPI\". השתמש ב-Firefox או ייצא קובץ cookies.txt.",
+  cookiesTest: "בדוק עוגיות",
+  cookiesTesting: "בודק...",
+  cookiesTestOk: "העוגיות עובדות",
+  cookiesTestNone: "לא הוגדרו עוגיות",
+  cookiesTestDecryptFailed:
+    "נמצאו עוגיות אך לא ניתן לפענח אותן — בחלונות מאגר העוגיות של הדפדפן הזה נעול אליו בלבד. השתמש ב-Firefox או ייצא קובץ cookies.txt.",
+  cookiesTestNotFound:
+    "לא נמצא מאגר עוגיות לדפדפן הזה. האם הוא מותקן ומחובר ליוטיוב?",
+  cookiesTestBlocked:
+    "העוגיות נטענו, אך יוטיוב עדיין ביקש אימות. התחבר ליוטיוב באותו דפדפן וייצא מחדש.",
+  cookiesTestError: "בדיקת העוגיות נכשלה",
+  reportProblem: "דיווח על תקלה",
+  reportHelp:
+    "שגיאות נכתבות לקובץ יומן מקומי. שום דבר לא נשלח לשום מקום אלא אם תבחר לשלוח.",
+  prepareReport: "הכן דוח",
+  reportConsent:
+    "עבור על הדוח למטה. \"פתח דיווח ב-GitHub\" יפתח את הדפדפן עם הטקסט הזה מוכן — השליחה עדיין בידיים שלך.",
+  copyReport: "העתק",
+  reportCopied: "הועתק",
+  openGithubIssue: "פתח דיווח ב-GitHub",
+  openLogFolder: "פתח תיקיית יומן",
+  clearLog: "נקה יומן",
+  logEntries: (n) => `${n} שגיאות ביומן`,
+  reportError: "בניית הדוח נכשלה",
+  fixUpdateYtdlp: "עדכן yt-dlp ונסה שוב",
+  fixCookies: "הגדר עוגיות",
+  fixUpdating: "מעדכן yt-dlp...",
+  fixUpdateFailed: "העדכון נכשל",
   errVideoNotAvailable: "הסרטון אינו זמין",
   errVideoUnavailable: "הסרטון אינו זמין",
   errPrivateVideo: "זהו סרטון פרטי",
   errAgeRestricted: "סרטון מוגבל גיל — נדרשת התחברות",
   errVideoRemoved: "הסרטון הוסר",
+  errBotCheck:
+    "יוטיוב ביקש לאמת שאינך רובוט. פתח הגדרות ← עוגיות YouTube וספק עוגיות מהדפדפן או קובץ cookies.txt (גם עדכון yt-dlp עשוי לעזור).",
+  errCookiesInvalid:
+    "העוגיות של YouTube אינן תקפות עוד. התחבר שוב ליוטיוב וייצא אותן מחדש בהגדרות ← עוגיות YouTube.",
+  errCookieDecrypt:
+    "לא ניתן לפענח את העוגיות של הדפדפן — בחלונות, דפדפני Chromium נועלים את מאגר העוגיות אליהם בלבד. עבור ל-Firefox או לקובץ cookies.txt בהגדרות ← עוגיות YouTube.",
 };
 
 const locales: Record<Language, Translations> = { en, he };
@@ -257,7 +465,33 @@ const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
   [/Private video/i, "errPrivateVideo"],
   [/Sign in to confirm your age/i, "errAgeRestricted"],
   [/This video has been removed/i, "errVideoRemoved"],
+  // Curly or straight apostrophe, and yt-dlp keeps rewording the sentence,
+  // so match loosely on the distinctive part.
+  [/Sign in to confirm[\s\S]{0,20}not a bot/i, "errBotCheck"],
+  [/cookies are no longer valid/i, "errCookiesInvalid"],
+  [/DPAPI|failed to decrypt cookie/i, "errCookieDecrypt"],
 ];
+
+/**
+ * Errors the user can act on from the download row itself.
+ * `null` means "nothing to offer beyond a plain retry".
+ */
+export type FixableError = "auth" | null;
+
+const AUTH_ERROR_KEYS: (keyof Translations)[] = [
+  "errBotCheck",
+  "errCookiesInvalid",
+  "errCookieDecrypt",
+];
+
+export function classifyError(raw: string): FixableError {
+  for (const [pattern, key] of ERROR_PATTERNS) {
+    if (pattern.test(raw)) {
+      return AUTH_ERROR_KEYS.includes(key) ? "auth" : null;
+    }
+  }
+  return null;
+}
 
 export function translateError(raw: string, t: Translations): string {
   for (const [pattern, key] of ERROR_PATTERNS) {

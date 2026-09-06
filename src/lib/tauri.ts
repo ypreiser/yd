@@ -10,7 +10,28 @@ export interface AppConfig {
   embed_title: boolean;
   embed_thumbnail: boolean;
   flip_hebrew_in_title: boolean;
+  /** How cookies reach yt-dlp — needed for YouTube's "not a bot" check. */
+  cookies_mode: CookiesMode;
+  /** Browser to read cookies from when cookies_mode === "browser". */
+  cookies_browser: string;
+  /** Absolute path to a cookies.txt when cookies_mode === "file". */
+  cookies_file: string;
 }
+
+export type CookiesMode = "none" | "browser" | "file";
+
+/** Browsers the Rust side accepts for --cookies-from-browser. */
+export const COOKIE_BROWSERS = [
+  "firefox",
+  "chrome",
+  "chromium",
+  "edge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "safari",
+  "whale",
+] as const;
 
 export interface DownloadProgress {
   id: string;
@@ -107,4 +128,109 @@ export function onDownloadProgress(
   return listen<DownloadProgress>("download-progress", (event) => {
     callback(event.payload);
   });
+}
+
+// --- connectivity ---
+
+export interface Connectivity {
+  /** Some host on the internet answered. */
+  online: boolean;
+  /** YouTube itself answered. */
+  youtube: boolean;
+}
+
+export async function checkConnectivity(): Promise<Connectivity> {
+  return invoke("check_connectivity");
+}
+
+// --- error log / problem reports ---
+
+export interface LogInfo {
+  path: string;
+  entries: number;
+}
+
+/** Record a frontend failure in the local (redacted) error log. */
+export async function logAppError(
+  context: string,
+  message: string
+): Promise<void> {
+  return invoke("log_app_error", { context, message });
+}
+
+export async function errorLogInfo(): Promise<LogInfo> {
+  return invoke("error_log_info");
+}
+
+export async function clearErrorLog(): Promise<void> {
+  return invoke("clear_error_log");
+}
+
+/** Build the report text shown to the user before anything is shared. */
+export async function buildErrorReport(
+  ytdlpVersion?: string
+): Promise<string> {
+  return invoke("build_error_report", { ytdlpVersion: ytdlpVersion ?? null });
+}
+
+// --- cookie diagnostics ---
+
+export type CookieTestStatus =
+  | "ok"
+  | "none"
+  | "decrypt_failed"
+  | "not_found"
+  | "blocked"
+  | "error";
+
+export interface CookieTest {
+  status: CookieTestStatus;
+  detail: string;
+}
+
+/** Runs a tiny real yt-dlp request with the configured cookie source. */
+export async function testCookies(): Promise<CookieTest> {
+  return invoke("test_cookies");
+}
+
+/**
+ * Chromium-family browsers, whose Windows cookie store yt-dlp cannot decrypt
+ * (app-bound encryption, Chrome 127+).
+ */
+export const CHROMIUM_BROWSERS = [
+  "chrome",
+  "chromium",
+  "edge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "whale",
+];
+
+export function isChromiumBrowser(browser: string): boolean {
+  return CHROMIUM_BROWSERS.includes(browser.trim());
+}
+
+// --- download history ---
+
+export interface HistoryEntry {
+  id: string;
+  url: string;
+  title: string;
+  file_path: string | null;
+  format: string;
+  /** Unix seconds, UTC. */
+  completed_at: number;
+}
+
+export async function historyList(): Promise<HistoryEntry[]> {
+  return invoke("history_list");
+}
+
+export async function historyRemove(id: string): Promise<void> {
+  return invoke("history_remove", { id });
+}
+
+export async function historyClear(): Promise<void> {
+  return invoke("history_clear");
 }

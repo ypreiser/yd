@@ -15,6 +15,9 @@ export const DEFAULT_CONFIG = {
   embed_title: false,
   embed_thumbnail: false,
   flip_hebrew_in_title: false,
+  cookies_mode: "none" as const,
+  cookies_browser: "",
+  cookies_file: "",
 };
 
 // Mock @tauri-apps/api/core
@@ -47,6 +50,24 @@ vi.mock("@tauri-apps/api/core", () => ({
         return 10 * 1024 * 1024 * 1024; // 10 GB
       case "cancel_search":
         return undefined;
+      case "check_connectivity":
+        return { online: true, youtube: true };
+      case "log_app_error":
+        return undefined;
+      case "error_log_info":
+        return { path: "C:\\Users\\test\\AppData\\yd\\logs\\errors.log", entries: 0 };
+      case "clear_error_log":
+        return undefined;
+      case "test_cookies":
+        return { status: "ok", detail: "" };
+      case "history_list":
+        return [];
+      case "history_remove":
+        return undefined;
+      case "history_clear":
+        return undefined;
+      case "build_error_report":
+        return "### Environment\n- App: YD 1.2.1\n";
       default:
         throw new Error(`Unmocked invoke command: ${cmd}`);
     }
@@ -72,6 +93,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 // Mock @tauri-apps/plugin-opener
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn(async () => undefined),
+  openUrl: vi.fn(async () => undefined),
+  revealItemInDir: vi.fn(async () => undefined),
 }));
 
 // Mock @tauri-apps/plugin-process

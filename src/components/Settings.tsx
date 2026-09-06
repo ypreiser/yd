@@ -1,12 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppConfig } from "../lib/tauri";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import type { AppConfig, CookiesMode, CookieTestStatus } from "../lib/tauri";
 import {
   getConfig,
   setConfig,
   getYtdlpVersion,
   checkYtdlpUpdate,
   updateYtdlp,
+  COOKIE_BROWSERS,
+  errorLogInfo,
+  clearErrorLog,
+  buildErrorReport,
+  testCookies,
+  isChromiumBrowser,
 } from "../lib/tauri";
 import { useT } from "../lib/i18n";
 import { getVersion } from "@tauri-apps/api/app";
@@ -14,28 +21,91 @@ import { getVersion } from "@tauri-apps/api/app";
 interface SettingsProps {
   onClose: () => void;
   onConfigSaved: (config: AppConfig) => void;
+  /** Scroll to and highlight a section — used when opened from an error. */
+  focusSection?: "cookies" | null;
 }
 
 const AUDIO_FORMATS = ["m4a", "mp3", "opus", "flac"];
 
-function Section({ children }: { children: React.ReactNode }) {
+/** yt-dlp's own, always-current guide to exporting YouTube cookies. */
+const COOKIE_GUIDE_URL =
+  "https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies";
+const ISSUE_URL = "https://github.com/ypreiser/yd/issues/new";
+/** Browsers refuse very long URLs, and GitHub truncates anyway. */
+const MAX_ISSUE_BODY = 4000;
+
+function Steps({ title, steps }: { title: string; steps: string[] }) {
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-white dark:bg-zinc-800/30 p-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+        {title}
+      </p>
+      <ol className="list-decimal ms-5 flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+        {steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+const COOKIE_TEST_MESSAGES: Record<
+  Exclude<CookieTestStatus, "ok">,
+  (t: ReturnType<typeof useT>) => string
+> = {
+  none: (t) => t.cookiesTestNone,
+  decrypt_failed: (t) => t.cookiesTestDecryptFailed,
+  not_found: (t) => t.cookiesTestNotFound,
+  blocked: (t) => t.cookiesTestBlocked,
+  error: (t) => t.cookiesTestError,
+};
+
+function Section({
+  children,
+  innerRef,
+  highlighted = false,
+}: {
+  children: React.ReactNode;
+  innerRef?: React.Ref<HTMLDivElement>;
+  highlighted?: boolean;
+}) {
+  return (
+    <div
+      ref={innerRef}
+      className={`rounded-lg border bg-white dark:bg-zinc-800/30 p-4 flex flex-col gap-4 transition-colors ${
+        highlighted
+          ? "border-indigo-500 ring-2 ring-indigo-500/25"
+          : "border-zinc-200 dark:border-zinc-700/50"
+      }`}
+    >
       {children}
     </div>
   );
 }
 
-export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
+export default function Settings({
+  onClose,
+  onConfigSaved,
+  focusSection = null,
+}: SettingsProps) {
   const t = useT();
+  const cookiesRef = useRef<HTMLDivElement>(null);
   const [config, setLocalConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
   const [ytdlpVer, setYtdlpVer] = useState("");
   const [ytdlpLatest, setYtdlpLatest] = useState("");
   const [ytdlpStatus, setYtdlpStatus] = useState<
     "idle" | "checking" | "available" | "updating" | "done" | "error"
   >("idle");
+  const [logPath, setLogPath] = useState("");
+  const [logEntries, setLogEntries] = useState(0);
+  const [report, setReport] = useState<string | null>(null);
+  const [reportError, setReportError] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [cookieTest, setCookieTest] = useState<CookieTestStatus | "testing" | null>(null);
+  const [cookieTestDetail, setCookieTestDetail] = useState("");
 
   useEffect(() => {
     getConfig().then(setLocalConfig);
@@ -43,7 +113,71 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
     getYtdlpVersion()
       .then(setYtdlpVer)
       .catch(() => {});
+    errorLogInfo()
+      .then((info) => {
+        setLogPath(info.path);
+        setLogEntries(info.entries);
+      })
+      .catch(() => {});
   }, []);
+
+  // The cookie source has to be saved before yt-dlp can be asked to use it.
+  async function handleTestCookies() {
+    if (!config) return;
+    setCookieTest("testing");
+    setCookieTestDetail("");
+    try {
+      await setConfig(config);
+      const result = await testCookies();
+      setCookieTest(result.status);
+      setCookieTestDetail(result.detail);
+    } catch (err) {
+      setCookieTest("error");
+      setCookieTestDetail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handlePrepareReport() {
+    setReportError(false);
+    setCopied(false);
+    try {
+      setReport(await buildErrorReport(ytdlpVer || undefined));
+    } catch {
+      setReportError(true);
+    }
+  }
+
+  async function handleCopyReport() {
+    if (!report) return;
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  async function handleOpenIssue() {
+    if (!report) return;
+    const body = report.slice(0, MAX_ISSUE_BODY);
+    await openUrl(
+      `${ISSUE_URL}?title=${encodeURIComponent("Bug report")}&body=${encodeURIComponent(body)}`
+    );
+  }
+
+  async function handleClearLog() {
+    await clearErrorLog();
+    setLogEntries(0);
+    setReport(null);
+  }
+
+  // Opened from a "not a bot" error: put the cookie settings in front of the
+  // user instead of making them find the section.
+  useEffect(() => {
+    if (focusSection !== "cookies" || !config) return;
+    // Optional call: not every webview (or test environment) implements it.
+    cookiesRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [focusSection, config]);
 
   async function handlePickDir() {
     const dir = await open({ directory: true, multiple: false });
@@ -52,10 +186,44 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
     }
   }
 
+  async function handlePickCookiesFile() {
+    const file = await open({
+      multiple: false,
+      filters: [{ name: "Cookies", extensions: ["txt"] }],
+    });
+    if (file && config) {
+      setLocalConfig({ ...config, cookies_file: file as string });
+    }
+  }
+
+  function setCookiesMode(mode: CookiesMode) {
+    if (!config) return;
+    setCookieTest(null);
+    setLocalConfig({
+      ...config,
+      cookies_mode: mode,
+      // Default to Firefox: on Windows, Chromium browsers encrypt their cookie
+      // store in a way yt-dlp usually cannot read.
+      cookies_browser:
+        mode === "browser" && !config.cookies_browser
+          ? "firefox"
+          : config.cookies_browser,
+    });
+  }
+
   async function handleSave() {
     if (!config) return;
     setSaving(true);
-    await setConfig(config);
+    setSaveError(null);
+    try {
+      await setConfig(config);
+    } catch (err) {
+      // Backend validation rejected something (e.g. a cookies file that is
+      // missing or not an absolute path) — keep the dialog open and say so.
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     onConfigSaved(config);
     onClose();
@@ -229,6 +397,162 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           </div>
         </Section>
 
+        {/* YouTube Cookies */}
+        <Section
+          innerRef={cookiesRef}
+          highlighted={focusSection === "cookies"}
+        >
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.cookies}
+            </label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.cookiesHelp}
+            </p>
+            <div className="flex gap-2">
+              {([
+                { mode: "none" as const, label: t.cookiesNone },
+                { mode: "browser" as const, label: t.cookiesFromBrowser },
+                { mode: "file" as const, label: t.cookiesFromFile },
+              ]).map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  onClick={() => setCookiesMode(mode)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                    config.cookies_mode === mode
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {config.cookies_mode === "browser" && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="cookies-browser"
+                className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                {t.cookiesBrowser}
+              </label>
+              <select
+                id="cookies-browser"
+                title={t.cookiesBrowser}
+                value={config.cookies_browser || "firefox"}
+                onChange={(e) => {
+                  setCookieTest(null);
+                  setLocalConfig({ ...config, cookies_browser: e.target.value });
+                }}
+                className={inputClass}
+              >
+                {COOKIE_BROWSERS.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {config.cookies_mode === "file" && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="cookies-file"
+                className="text-sm font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                {t.cookiesFile}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="cookies-file"
+                  type="text"
+                  value={config.cookies_file}
+                  onChange={(e) =>
+                    setLocalConfig({ ...config, cookies_file: e.target.value })
+                  }
+                  className={`flex-1 ${inputClass}`}
+                />
+                <button
+                  onClick={handlePickCookiesFile}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+                >
+                  {t.browse}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {config.cookies_mode === "browser" &&
+            isChromiumBrowser(config.cookies_browser) && (
+              <p
+                role="alert"
+                className="text-xs text-red-600 dark:text-red-400"
+              >
+                {t.cookiesChromiumWarning}
+              </p>
+            )}
+
+          {config.cookies_mode !== "none" && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleTestCookies}
+                  disabled={cookieTest === "testing"}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                >
+                  {cookieTest === "testing" ? t.cookiesTesting : t.cookiesTest}
+                </button>
+                {cookieTest === "ok" && (
+                  <span className="text-xs text-green-600 dark:text-green-500">
+                    {t.cookiesTestOk}
+                  </span>
+                )}
+              </div>
+              {cookieTest && cookieTest !== "testing" && cookieTest !== "ok" && (
+                <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+                  {COOKIE_TEST_MESSAGES[cookieTest](t)}
+                  {cookieTestDetail && (
+                    <span className="block mt-1 font-mono text-zinc-400 dark:text-zinc-500">
+                      {cookieTestDetail}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {config.cookies_mode !== "none" && (
+            <p className="text-xs text-amber-600 dark:text-amber-500">
+              {t.cookiesWarning}
+            </p>
+          )}
+
+          <details
+            open={focusSection === "cookies"}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-700/50 p-3"
+          >
+            <summary className="cursor-pointer text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              {t.cookiesHowTo}
+            </summary>
+            <div className="flex flex-col gap-3 pt-3">
+              <Steps
+                title={t.cookiesFromBrowser}
+                steps={t.cookiesStepsBrowser}
+              />
+              <Steps title={t.cookiesFromFile} steps={t.cookiesStepsFile} />
+              <button
+                onClick={() => openUrl(COOKIE_GUIDE_URL)}
+                className="self-start text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {t.cookiesGuideLink} ↗
+              </button>
+            </div>
+          </details>
+        </Section>
+
         {/* Updates */}
         <Section>
           {/* Auto Update */}
@@ -337,7 +661,85 @@ export default function Settings({ onClose, onConfigSaved }: SettingsProps) {
           )}
         </Section>
 
+        {/* Problem reports */}
+        <Section>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              {t.reportProblem}
+            </label>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.reportHelp}
+            </p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {t.logEntries(logEntries)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handlePrepareReport}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+            >
+              {t.prepareReport}
+            </button>
+            {logPath && (
+              <button
+                onClick={() => revealItemInDir(logPath)}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+              >
+                {t.openLogFolder}
+              </button>
+            )}
+            {logEntries > 0 && (
+              <button
+                onClick={handleClearLog}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+              >
+                {t.clearLog}
+              </button>
+            )}
+          </div>
+
+          {reportError && (
+            <p className="text-sm text-red-500">{t.reportError}</p>
+          )}
+
+          {report !== null && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t.reportConsent}
+              </p>
+              <textarea
+                readOnly
+                value={report}
+                aria-label={t.reportProblem}
+                rows={10}
+                className={`${inputClass} font-mono text-xs`}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleOpenIssue}
+                  className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:scale-[0.97] transition-all"
+                >
+                  {t.openGithubIssue}
+                </button>
+                <button
+                  onClick={handleCopyReport}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:scale-[0.97] transition-all"
+                >
+                  {copied ? t.reportCopied : t.copyReport}
+                </button>
+              </div>
+            </div>
+          )}
+        </Section>
+
         {/* Actions */}
+        {saveError && (
+          <p className="text-sm text-red-500" role="alert">
+            {t.settingsSaveError}: {saveError}
+          </p>
+        )}
         <div className="flex gap-2 justify-end pt-2 pb-4">
           <button
             onClick={onClose}

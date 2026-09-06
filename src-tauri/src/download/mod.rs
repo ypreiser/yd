@@ -1,9 +1,8 @@
-use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -13,10 +12,16 @@ use uuid::Uuid;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-static PROGRESS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
-
 const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
+
+mod args;
+mod text;
+mod urls;
+
+use args::{cookie_args, download_args, CHROMIUM_BROWSERS};
+
+use text::{decode_output, parse_progress_percent, sanitize_windows_filename};
+use urls::{is_valid_youtube_url, version_is_newer};
 
 use crate::config::load_config;
 use crate::hebrew::{contains_hebrew, reverse_hebrew};
@@ -94,25 +99,6 @@ fn ffmpeg_location() -> String {
 
 /// Write title metadata into audio file via ffmpeg codec copy.
 /// If flip_hebrew is true, reverses Hebrew character runs in the title.
-/// Apply the same filename sanitization as yt-dlp --windows-filenames:
-/// replace forbidden Windows chars with their fullwidth Unicode equivalents.
-fn sanitize_windows_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            '"'  => '\u{FF02}', // ＂
-            '*'  => '\u{FF0A}', // ＊
-            ':'  => '\u{FF1A}', // ：
-            '<'  => '\u{FF1C}', // ＜
-            '>'  => '\u{FF1E}', // ＞
-            '?'  => '\u{FF1F}', // ？
-            '\\' => '\u{FF3C}', // ＼
-            '|'  => '\u{FF5C}', // ｜
-            '/'  => '\u{FF0F}', // ／
-            _ => c,
-        })
-        .collect()
-}
-
 async fn embed_title_tag(
     file_path: &std::path::Path,
     title: &str,
@@ -126,7 +112,8 @@ async fn embed_title_tag(
     };
 
     let ffmpeg_bin = if cfg!(windows) {
-        let with_triple = std::path::Path::new(ffmpeg_dir).join("ffmpeg-x86_64-pc-windows-msvc.exe");
+        let with_triple =
+            std::path::Path::new(ffmpeg_dir).join("ffmpeg-x86_64-pc-windows-msvc.exe");
         if with_triple.exists() {
             with_triple
         } else {
@@ -146,11 +133,17 @@ async fn embed_title_tag(
     let mut ffmpeg_cmd = tokio::process::Command::new(&ffmpeg_bin);
     ffmpeg_cmd
         .args([
-            "-nostdin", "-i", &input_path,
-            "-map", "0",
-            "-metadata", &metadata_arg,
-            "-codec", "copy",
-            "-y", &temp_str,
+            "-nostdin",
+            "-i",
+            &input_path,
+            "-map",
+            "0",
+            "-metadata",
+            &metadata_arg,
+            "-codec",
+            "copy",
+            "-y",
+            &temp_str,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -171,11 +164,17 @@ async fn embed_title_tag(
         let mut ffmpeg_cmd2 = tokio::process::Command::new(&ffmpeg_bin);
         ffmpeg_cmd2
             .args([
-                "-nostdin", "-i", &input_path,
-                "-map", "0:a",
-                "-metadata", &metadata_arg,
-                "-codec", "copy",
-                "-y", &temp_str,
+                "-nostdin",
+                "-i",
+                &input_path,
+                "-map",
+                "0:a",
+                "-metadata",
+                &metadata_arg,
+                "-codec",
+                "copy",
+                "-y",
+                &temp_str,
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -239,65 +238,12 @@ async fn run_ytdlp(
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let output = cmd.output().await.map_err(|e| e.to_string())?;
 
     Ok((output.stdout, output.stderr, output.status.success()))
 }
 
 /// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
-fn decode_output(bytes: &[u8]) -> String {
-    if let Ok(s) = std::str::from_utf8(bytes) {
-        return s.to_string();
-    }
-
-    #[cfg(windows)]
-    {
-        use std::ffi::OsString;
-        use std::os::windows::ffi::OsStringExt;
-
-        extern "system" {
-            fn MultiByteToWideChar(
-                code_page: u32,
-                flags: u32,
-                src: *const u8,
-                src_len: i32,
-                dst: *mut u16,
-                dst_len: i32,
-            ) -> i32;
-        }
-
-        const CP_ACP: u32 = 0;
-
-        let src_len = match i32::try_from(bytes.len()) {
-            Ok(n) => n,
-            Err(_) => return String::from_utf8_lossy(bytes).to_string(),
-        };
-
-        unsafe {
-            let wide_len = MultiByteToWideChar(
-                CP_ACP, 0,
-                bytes.as_ptr(), src_len,
-                std::ptr::null_mut(), 0,
-            );
-            if wide_len > 0 {
-                let mut wide = vec![0u16; wide_len as usize];
-                MultiByteToWideChar(
-                    CP_ACP, 0,
-                    bytes.as_ptr(), src_len,
-                    wide.as_mut_ptr(), wide_len,
-                );
-                return OsString::from_wide(&wide).to_string_lossy().to_string();
-            }
-        }
-    }
-
-    String::from_utf8_lossy(bytes).to_string()
-}
-
-// --- Structs ---
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
@@ -402,32 +348,6 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
-fn version_is_newer(latest: &str, current: &str) -> bool {
-    let parse = |v: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() >= 3 {
-            Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
-        } else {
-            None
-        }
-    };
-    match (parse(latest), parse(current)) {
-        (Some(l), Some(c)) => l > c,
-        _ => latest > current,
-    }
-}
-
-fn is_valid_youtube_url(url: &str) -> bool {
-    let url = url.trim();
-    if url.len() > 2048 {
-        return false;
-    }
-    url.starts_with("https://www.youtube.com/")
-        || url.starts_with("https://youtube.com/")
-        || url.starts_with("https://youtu.be/")
-        || url.starts_with("https://music.youtube.com/")
-}
-
 // --- Disk space ---
 
 #[tauri::command]
@@ -455,9 +375,8 @@ pub async fn check_disk_space(path: String) -> Result<u64, String> {
         let mut _total: u64 = 0;
         let mut _total_free: u64 = 0;
 
-        let result = unsafe {
-            GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut _total, &mut _total_free)
-        };
+        let result =
+            unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut _total, &mut _total_free) };
 
         if result == 0 {
             return Err("Failed to check disk space".to_string());
@@ -478,7 +397,7 @@ pub async fn check_disk_space(path: String) -> Result<u64, String> {
             return Err("Failed to check disk space".to_string());
         }
 
-        Ok(stat.f_bavail as u64 * stat.f_frsize as u64)
+        Ok(stat.f_bavail * stat.f_frsize)
     }
 }
 
@@ -511,11 +430,8 @@ pub async fn check_ytdlp_update(app: tauri::AppHandle) -> Result<YtdlpUpdateInfo
         .await
         .map_err(|e| e.to_string())?;
 
-    let latest: String = resp["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    
+    let latest: String = resp["tag_name"].as_str().unwrap_or("").to_string();
+
     let update_available = !latest.is_empty() && version_is_newer(&latest, &current);
 
     Ok(YtdlpUpdateInfo {
@@ -531,11 +447,20 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     std::fs::create_dir_all(&app_data).ok();
 
     let (download_url, binary_name) = if cfg!(windows) {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", "yt-dlp.exe")
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+            "yt-dlp.exe",
+        )
     } else if cfg!(target_os = "macos") {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos", "yt-dlp_macos") 
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
+            "yt-dlp_macos",
+        )
     } else {
-        ("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp", "yt-dlp")
+        (
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+            "yt-dlp",
+        )
     };
 
     let path: PathBuf = if cfg!(windows) {
@@ -546,23 +471,47 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 
     let client = reqwest::Client::new();
 
-    // Fetch SHA256 checksums from release
-    let checksums_text = client
+    // Fetch the checksum file and its detached OpenPGP signature.
+    //
+    // The checksums and the binary come from the same origin, so on their own
+    // they only prove the download was not corrupted. Verifying the signature
+    // against yt-dlp's pinned signing key is what proves who produced them.
+    let checksums = client
         .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS")
         .header("User-Agent", "yd-app")
         .send()
         .await
         .map_err(|e| e.to_string())?
-        .text()
+        .bytes()
         .await
         .map_err(|e| e.to_string())?;
 
+    let signature = client
+        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS.sig")
+        .header("User-Agent", "yd-app")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    crate::signature::verify_ytdlp_checksums(&checksums, &signature)
+        .map_err(|e| format!("Refusing to update: {}", e))?;
+
+    let checksums_text = String::from_utf8_lossy(&checksums);
+
+    // Match the filename field exactly. `ends_with` would also accept a future
+    // asset whose name merely ends with this one.
     let expected_hash = checksums_text
         .lines()
-        .find(|line| line.ends_with(binary_name))
-        .and_then(|line| line.split_whitespace().next())
-        .ok_or_else(|| format!("Checksum not found for {}", binary_name))?
-        .to_string();
+        .find_map(|line| {
+            let mut fields = line.split_whitespace();
+            let hash = fields.next()?;
+            let name = fields.next()?;
+            (name.trim_start_matches('*') == binary_name).then(|| hash.to_string())
+        })
+        .ok_or_else(|| format!("Checksum not found for {}", binary_name))?;
 
     // Download binary
     let bytes = client
@@ -576,7 +525,7 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     // Verify checksum before writing
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let hash = format!("{:x}", Sha256::digest(&bytes));
     if hash != expected_hash {
         return Err(format!(
@@ -592,7 +541,8 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755)) {
+        if let Err(e) = std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
+        {
             let _ = std::fs::remove_file(&temp_path);
             return Err(e.to_string());
         }
@@ -605,6 +555,102 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 
     // Verify new binary works
     get_ytdlp_version(app).await
+}
+
+/// Outcome of checking whether the configured cookie source actually works.
+#[derive(Debug, Clone, Serialize)]
+pub struct CookieTest {
+    /// One of: ok, none, decrypt_failed, not_found, blocked, error.
+    pub status: String,
+    /// Short, redacted yt-dlp output — empty when there is nothing to add.
+    pub detail: String,
+}
+
+fn classify_cookie_failure(stderr: &str) -> &'static str {
+    let lower = stderr.to_lowercase();
+    // Chrome 127+ app-bound encryption: cookies are found but undecryptable.
+    if lower.contains("dpapi") || lower.contains("failed to decrypt") {
+        "decrypt_failed"
+    } else if lower.contains("could not find") || lower.contains("does not support") {
+        "not_found"
+    } else if lower.contains("not a bot") || lower.contains("sign in to confirm") {
+        "blocked"
+    } else {
+        "error"
+    }
+}
+
+/// Try the configured cookie source against a real (tiny) yt-dlp request.
+///
+/// Without this, a bad cookie source only shows up as a failed download later.
+/// The common case on Windows is cookies that are found but cannot be
+/// decrypted, which no amount of retrying will fix.
+#[tauri::command]
+pub async fn test_cookies(app: tauri::AppHandle) -> Result<CookieTest, String> {
+    let config = load_config(&app);
+    let cookies = cookie_args(&config);
+
+    if cookies.is_empty() {
+        return Ok(CookieTest {
+            status: "none".to_string(),
+            detail: String::new(),
+        });
+    }
+
+    // A one-result search is the cheapest request that still loads the cookie
+    // jar and talks to YouTube.
+    let mut args: Vec<String> = cookies;
+    args.extend(
+        [
+            "--flat-playlist",
+            "--no-download",
+            "--print",
+            "%(id)s",
+            "ytsearch1:test",
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let (_, stderr, success) = run_ytdlp(&app, &arg_refs).await?;
+    let stderr = decode_output(&stderr);
+
+    // yt-dlp reports an unreadable cookie store as a warning and carries on
+    // without cookies, so a zero exit code is not proof the cookies worked.
+    let decrypt_failed = classify_cookie_failure(&stderr) == "decrypt_failed"
+        && (stderr.to_lowercase().contains("dpapi")
+            || stderr.to_lowercase().contains("failed to decrypt"));
+
+    if success && !decrypt_failed {
+        return Ok(CookieTest {
+            status: "ok".to_string(),
+            detail: String::new(),
+        });
+    }
+
+    let status = if decrypt_failed {
+        "decrypt_failed"
+    } else {
+        classify_cookie_failure(&stderr)
+    };
+
+    crate::logging::log_error(&app, "cookie-test", &stderr);
+
+    Ok(CookieTest {
+        status: status.to_string(),
+        // Redacted, and short enough to sit in the settings panel.
+        detail: crate::logging::redact(stderr.lines().last().unwrap_or("").trim())
+            .chars()
+            .take(300)
+            .collect(),
+    })
+}
+
+/// Whether the selected browser is one that Windows app-bound encryption
+/// breaks, so the UI can warn before the user hits it.
+#[tauri::command]
+pub fn cookie_browser_is_chromium(browser: String) -> bool {
+    CHROMIUM_BROWSERS.contains(&browser.trim())
 }
 
 #[tauri::command]
@@ -638,13 +684,23 @@ pub async fn search_youtube(
     let query = query.trim_start_matches('-');
     let search_query = format!("ytsearch10:{}", query);
 
+    let cookies = cookie_args(&load_config(&app));
+
     let mut search_cmd = tokio::process::Command::new(ytdlp_path(&app));
+    search_cmd.args(&cookies);
+    // Search is interactive — pace requests, but never sleep before them.
+    search_cmd.args(["--sleep-requests", "1", "--retries", "3"]);
+    // The PREF header only makes sense without real cookies — yt-dlp would
+    // otherwise drop it in favour of the cookie jar and warn about the clash.
+    if cookies.is_empty() {
+        search_cmd.args(["--add-header", "Cookie:PREF=f2=8000000"]);
+    }
     search_cmd
         .args([
             "--flat-playlist",
             "--no-download",
-            "--add-header", "Cookie:PREF=f2=8000000",
-            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
+            "--print",
+            "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(channel)s\t%(thumbnails.0.url)s",
             &search_query,
         ])
         .env("PYTHONUTF8", "1")
@@ -654,9 +710,7 @@ pub async fn search_youtube(
     {
         search_cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let child = search_cmd
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let child = search_cmd.spawn().map_err(|e| e.to_string())?;
 
     // Track PID for cancellation
     let pid = child.id().unwrap_or(0);
@@ -676,10 +730,13 @@ pub async fn search_youtube(
         }
     }
 
-    let (stdout_bytes, stderr_bytes, success) = (output.stdout, output.stderr, output.status.success());
+    let (stdout_bytes, stderr_bytes, success) =
+        (output.stdout, output.stderr, output.status.success());
 
     if !success {
-        return Err(decode_output(&stderr_bytes));
+        let err = decode_output(&stderr_bytes);
+        crate::logging::log_error(&app, "search", &err);
+        return Err(err);
     }
 
     let stdout = decode_output(&stdout_bytes);
@@ -726,28 +783,34 @@ pub async fn search_youtube(
 }
 
 #[tauri::command]
-pub async fn fetch_playlist(
-    app: tauri::AppHandle,
-    url: String,
-) -> Result<PlaylistInfo, String> {
+pub async fn fetch_playlist(app: tauri::AppHandle, url: String) -> Result<PlaylistInfo, String> {
     if !is_valid_youtube_url(&url) {
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
 
-    let (stdout, stderr, success) = run_ytdlp(
-        &app,
-        &[
+    // Cookies (when configured) go first so they also cover the metadata fetch —
+    // playlist listing hits the same bot check as downloading does.
+    let mut args: Vec<String> = cookie_args(&load_config(&app));
+    args.extend(
+        [
             "--flat-playlist",
             "--no-download",
-            "--print", "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
-            "--print", "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
-            &url,
-        ],
-    )
-    .await?;
+            "--print",
+            "playlist:YTDL_PLAYLIST_TITLE:%(playlist_title)s",
+            "--print",
+            "%(id)s\t%(title)s\t%(url)s\t%(duration_string)s\t%(thumbnails.0.url)s",
+            url.as_str(),
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let (stdout, stderr, success) = run_ytdlp(&app, &arg_refs).await?;
 
     if !success {
-        return Err(decode_output(&stderr));
+        let err = decode_output(&stderr);
+        crate::logging::log_error(&app, "playlist", &err);
+        return Err(err);
     }
 
     let stdout = decode_output(&stdout);
@@ -804,10 +867,7 @@ pub async fn fetch_playlist(
 }
 
 #[tauri::command]
-pub async fn download(
-    app: tauri::AppHandle,
-    url: String,
-) -> Result<String, String> {
+pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, String> {
     if !is_valid_youtube_url(&url) {
         return Err("Invalid URL: only YouTube URLs are allowed".to_string());
     }
@@ -865,25 +925,13 @@ pub async fn download(
         {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        if config.embed_thumbnail {
-            cmd.arg("--embed-thumbnail");
-        }
         let result = cmd
-            .args([
-                "-f", "bestaudio",
-                "--recode-video",
-                &config.audio_format,
-                "--newline",
-                "--progress",
-                "--windows-filenames",
-                "--ffmpeg-location",
+            .args(download_args(
+                &config,
                 &ffmpeg_path,
-                "--print", "before_dl:YTDL_TITLE:%(title)s",
-                "--print", "after_move:YTDL_FILEPATH:%(filepath)s",
-                "-o",
                 &output_template,
                 &url_clone,
-            ])
+            ))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
@@ -927,6 +975,10 @@ pub async fn download(
                 let mut title: Option<String> = None;
                 let mut filepath: Option<String> = None;
                 let mut last_stderr = String::new();
+                // yt-dlp can print warnings after the fatal error, so keep the
+                // first real ERROR line — that's what the UI maps to a friendly
+                // message (e.g. YouTube's "not a bot" check).
+                let mut first_error: Option<String> = None;
                 let mut already_exists = false;
 
                 while let Some((is_stderr, line)) = rx.recv().await {
@@ -934,6 +986,9 @@ pub async fn download(
 
                     if is_stderr && !line.is_empty() {
                         last_stderr = line.clone();
+                        if first_error.is_none() && line.starts_with("ERROR:") {
+                            first_error = Some(line.clone());
+                        }
                     }
 
                     if line.contains("has already been downloaded") {
@@ -952,9 +1007,12 @@ pub async fn download(
                         }
                     }
 
-                    if let Some(caps) = PROGRESS_RE.captures(&line) {
-                        if let Ok(pct) = caps[1].parse::<f64>() {
-                            let status = if line.contains("[ExtractAudio]") || line.contains("[VideoConvertor]") || line.contains("Post-process") {
+                    if let Some(pct) = parse_progress_percent(&line) {
+                        {
+                            let status = if line.contains("[ExtractAudio]")
+                                || line.contains("[VideoConvertor]")
+                                || line.contains("Post-process")
+                            {
                                 "converting"
                             } else {
                                 "downloading"
@@ -1001,11 +1059,13 @@ pub async fn download(
                         // Try yt-dlp's reported filepath first; if it doesn't exist,
                         // reconstruct using the same fullwidth-char sanitization yt-dlp
                         // applies with --windows-filenames
-                        let mut file_path = filepath.as_ref().map(|p| PathBuf::from(p));
+                        let mut file_path = filepath.as_ref().map(PathBuf::from);
                         if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
                             let sanitized = sanitize_windows_filename(t);
-                            file_path = Some(PathBuf::from(&config.download_dir)
-                                .join(format!("{}.{}", sanitized, &config.audio_format)));
+                            file_path = Some(
+                                PathBuf::from(&config.download_dir)
+                                    .join(format!("{}.{}", sanitized, &config.audio_format)),
+                            );
                         }
                         // Fallback: prefix search for encoding edge cases (e.g. é lost in pipe)
                         if file_path.as_ref().map(|p| !p.exists()).unwrap_or(true) {
@@ -1029,12 +1089,30 @@ pub async fn download(
                                     t,
                                     &ffmpeg_path,
                                     config.flip_hebrew_in_title,
-                                ).await {
+                                )
+                                .await
+                                {
                                     eprintln!("embed_title_tag failed: {}", e);
                                 }
                             }
                         }
                     }
+                }
+
+                if let Some(ref err) = first_error {
+                    crate::logging::log_error(&app, "download", err);
+                }
+
+                // Record what actually landed on disk, so the list survives a
+                // restart and a failed batch can be resumed from history.
+                if success && !was_cancelled {
+                    crate::history::record(
+                        &app,
+                        &url_clone,
+                        title.as_deref().unwrap_or(&url_clone),
+                        filepath.clone(),
+                        &config.audio_format,
+                    );
                 }
 
                 let (status, error): (String, Option<String>) = if was_cancelled {
@@ -1046,10 +1124,12 @@ pub async fn download(
                 } else {
                     (
                         "error".to_string(),
-                        Some(if last_stderr.is_empty() {
-                            format!("yt-dlp exited with code {:?}", exit_code)
-                        } else {
-                            last_stderr.clone()
+                        Some(match (&first_error, last_stderr.is_empty()) {
+                            (Some(err), _) => err.clone(),
+                            (None, false) => last_stderr.clone(),
+                            (None, true) => {
+                                format!("yt-dlp exited with code {:?}", exit_code)
+                            }
                         }),
                     )
                 };
@@ -1074,6 +1154,7 @@ pub async fn download(
             }
             Err(e) => {
                 let err_str = e.to_string();
+                crate::logging::log_error(&app, "download-spawn", &err_str);
                 // Clean up PID map in case it was inserted
                 children.lock().await.remove(&id_clone);
                 app.emit(
@@ -1126,5 +1207,47 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
         Ok(())
     } else {
         Err("download not found or already finished".to_string())
+    }
+}
+
+#[cfg(test)]
+mod cookie_test_classification {
+    use super::classify_cookie_failure;
+
+    #[test]
+    fn recognises_windows_app_bound_encryption() {
+        // What Chromium browsers on Windows actually produce.
+        assert_eq!(
+            classify_cookie_failure(
+                "WARNING: [Cookies] Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/7271"
+            ),
+            "decrypt_failed"
+        );
+        assert_eq!(
+            classify_cookie_failure("ERROR: failed to decrypt cookie (AES-GCM)"),
+            "decrypt_failed"
+        );
+    }
+
+    #[test]
+    fn recognises_a_missing_cookie_store() {
+        assert_eq!(
+            classify_cookie_failure("ERROR: could not find chrome cookies database"),
+            "not_found"
+        );
+    }
+
+    #[test]
+    fn recognises_the_bot_check() {
+        assert_eq!(
+            classify_cookie_failure("ERROR: Sign in to confirm you are not a bot"),
+            "blocked"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_a_generic_error() {
+        assert_eq!(classify_cookie_failure("ERROR: something else"), "error");
+        assert_eq!(classify_cookie_failure(""), "error");
     }
 }

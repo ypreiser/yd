@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 import UrlInput from "./components/UrlInput";
 import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
 import SearchBar from "./components/SearchBar";
+import HistoryList from "./components/HistoryList";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
 import {
   downloadBatch,
@@ -15,12 +16,13 @@ import {
   checkBinaries,
 } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
+import { useConnectivity } from "./lib/useConnectivity";
+import type { ConnectionState } from "./lib/useConnectivity";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
-type View = "main" | "settings";
-type InputMode = "url" | "search";
+type InputMode = "url" | "search" | "history";
 
 type UpdateStatus = "idle" | "available" | "downloading" | "ready";
 
@@ -137,29 +139,180 @@ function UpdateBanner() {
   );
 }
 
-function Header({ view, setView }: { view: View; setView: (v: View) => void }) {
+function ConnectionIndicator({ state }: { state: ConnectionState }) {
+  const t = useT();
+
+  const { dot, label } = {
+    online: { dot: "bg-green-500", label: t.online },
+    offline: { dot: "bg-red-500", label: t.offline },
+    "no-youtube": { dot: "bg-amber-500", label: t.youtubeUnreachable },
+  }[state];
+
+  return (
+    <span
+      className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400"
+      title={`${t.connection}: ${label}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block h-2 w-2 rounded-full ${dot}`}
+      />
+      <span role="status" aria-label={`${t.connection}: ${label}`}>
+        {label}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The indicator alone is easy to miss, and a user whose network is down should
+ * not have to read a yt-dlp error to find that out. Say it once, above the
+ * input — without blocking downloads, since the probe can be wrong (a proxy, a
+ * blocked probe endpoint) and the user knows their network better than we do.
+ */
+function ConnectionBanner({ state }: { state: ConnectionState }) {
+  const t = useT();
+  if (state === "online") return null;
+
+  const offline = state === "offline";
+  return (
+    <div
+      role="alert"
+      className={`flex items-center px-4 py-2 text-sm text-white ${
+        offline ? "bg-red-600" : "bg-amber-600"
+      }`}
+    >
+      {offline ? t.offlineBanner : t.youtubeUnreachableBanner}
+    </div>
+  );
+}
+
+function Header({
+  settingsOpen,
+  toggleSettings,
+  closeSettings,
+  connection,
+}: {
+  settingsOpen: boolean;
+  toggleSettings: () => void;
+  closeSettings: () => void;
+  connection: ConnectionState;
+}) {
   const t = useT();
   return (
     <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
       <h1
         className="text-xl font-bold tracking-tight cursor-pointer text-zinc-900 dark:text-zinc-100"
-        onClick={() => setView("main")}
+        onClick={closeSettings}
       >
         {t.appTitle}
       </h1>
-      <button
-        onClick={() => setView(view === "settings" ? "main" : "settings")}
-        aria-label={view === "settings" ? t.back : t.settings}
-        className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors text-sm font-medium"
-      >
-        {view === "settings" ? t.back : t.settings}
-      </button>
+      <div className="flex items-center gap-4">
+        <ConnectionIndicator state={connection} />
+        <button
+          onClick={toggleSettings}
+          aria-label={settingsOpen ? t.back : t.settings}
+          aria-expanded={settingsOpen}
+          aria-controls="settings-drawer"
+          className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors text-sm font-medium"
+        >
+          {settingsOpen ? t.back : t.settings}
+        </button>
+      </div>
     </div>
   );
 }
 
+/**
+ * Settings as a drawer over the app rather than a separate screen: downloads
+ * keep running and stay visible behind it, and closing returns you exactly
+ * where you were. Mounted only while open, so it reloads config each time.
+ */
+function SettingsDrawer({
+  section,
+  onClose,
+  onConfigSaved,
+}: {
+  section: "cookies" | null;
+  onClose: () => void;
+  onConfigSaved: (config: AppConfig) => void;
+}) {
+  const t = useT();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocus.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => previousFocus.current?.focus?.();
+  }, []);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/30 animate-fade-in"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        id="settings-drawer"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.settings}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="fixed inset-y-0 end-0 z-50 w-full max-w-md flex flex-col border-s border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 shadow-2xl animate-drawer-in outline-none"
+      >
+        <div className="flex items-center justify-end px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+          <button
+            onClick={onClose}
+            aria-label={t.close}
+            className="rounded px-2 py-0.5 text-zinc-500 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        {/* Settings scrolls its own body, so the drawer must not scroll too. */}
+        <div className="flex-1 min-h-0 flex flex-col px-4 pt-3">
+          <Settings
+            focusSection={section}
+            onClose={onClose}
+            onConfigSaved={onConfigSaved}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 function App() {
-  const [view, setView] = useState<View>("main");
+  const connection = useConnectivity();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Set when the drawer is opened from an auth error, so it lands on cookies.
+  const [settingsSection, setSettingsSection] = useState<"cookies" | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("url");
   const [downloads, setDownloads] = useState<Map<string, DownloadProgress>>(
     new Map(),
@@ -285,50 +438,77 @@ function App() {
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
         <BinaryCheckBanner />
         <UpdateBanner />
-        <Header view={view} setView={setView} />
+        <ConnectionBanner state={connection} />
+        <Header
+          settingsOpen={settingsOpen}
+          toggleSettings={() => {
+            setSettingsSection(null);
+            setSettingsOpen((open) => !open);
+          }}
+          closeSettings={() => setSettingsOpen(false)}
+          connection={connection}
+        />
         <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0">
-          {view === "settings" ? (
-            <Settings
-              onClose={() => setView("main")}
-              onConfigSaved={handleConfigSaved}
-            />
-          ) : (
-            <>
-              <div role="tablist" className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">
-                <button
-                  role="tab"
-                  aria-selected={inputMode === "url"}
-                  onClick={() => setInputMode("url")}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    inputMode === "url"
-                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  URL
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={inputMode === "search"}
-                  onClick={() => setInputMode("search")}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    inputMode === "search"
-                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                  }`}
-                >
-                  {t.search}
-                </button>
-              </div>
-              {inputMode === "url" ? (
-                <UrlInput onSubmit={handleSubmit} />
-              ) : (
-                <SearchBar onDownload={handleSubmit} />
-              )}
-              <DownloadList items={items} onClear={handleClear} onRetry={handleRetry} />
-            </>
+          <div role="tablist" className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">
+            <button
+              role="tab"
+              aria-selected={inputMode === "url"}
+              onClick={() => setInputMode("url")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                inputMode === "url"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              URL
+            </button>
+            <button
+              role="tab"
+              aria-selected={inputMode === "search"}
+              onClick={() => setInputMode("search")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                inputMode === "search"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              {t.search}
+            </button>
+            <button
+              role="tab"
+              aria-selected={inputMode === "history"}
+              onClick={() => setInputMode("history")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                inputMode === "history"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              {t.history}
+            </button>
+          </div>
+          {inputMode === "url" && <UrlInput onSubmit={handleSubmit} />}
+          {inputMode === "search" && <SearchBar onDownload={handleSubmit} />}
+          {inputMode === "history" && <HistoryList onDownload={handleSubmit} />}
+          {inputMode !== "history" && (
+          <DownloadList
+            items={items}
+            onClear={handleClear}
+            onRetry={handleRetry}
+            onFixCookies={() => {
+              setSettingsSection("cookies");
+              setSettingsOpen(true);
+            }}
+          />
           )}
         </div>
+        {settingsOpen && (
+          <SettingsDrawer
+            section={settingsSection}
+            onClose={() => setSettingsOpen(false)}
+            onConfigSaved={handleConfigSaved}
+          />
+        )}
       </main>
     </I18nContext.Provider>
   );
