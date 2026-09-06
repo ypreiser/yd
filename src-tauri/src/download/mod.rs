@@ -1,9 +1,8 @@
-use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -13,37 +12,21 @@ use uuid::Uuid;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-static PROGRESS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
-
 const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
 
-use crate::config::{load_config, AppConfig, ALLOWED_COOKIE_BROWSERS};
+mod args;
+mod text;
+mod urls;
+
+use args::{cookie_args, download_args};
+
+use text::{decode_output, parse_progress_percent, sanitize_windows_filename};
+use urls::{is_valid_youtube_url, version_is_newer};
+
+use crate::config::load_config;
 use crate::hebrew::{contains_hebrew, reverse_hebrew};
 
 const MAX_CONCURRENT: usize = 5;
-
-/// Pace requests so a batch does not look like a scraper.
-///
-/// Five parallel downloads hammering YouTube is exactly the pattern that earns
-/// "Sign in to confirm you're not a bot". A second between metadata requests and
-/// a short random gap before each download costs almost nothing on a single
-/// download and materially reduces how often a batch trips the check. Retries
-/// cover the transient 403/timeout that used to fail a download outright.
-const PACING_ARGS: &[&str] = &[
-    "--sleep-requests",
-    "1",
-    "--min-sleep-interval",
-    "1",
-    "--max-sleep-interval",
-    "5",
-    "--retries",
-    "5",
-    "--fragment-retries",
-    "10",
-    "--retry-sleep",
-    "exp=1:30",
-];
 
 // --- yt-dlp path resolution ---
 
@@ -116,25 +99,6 @@ fn ffmpeg_location() -> String {
 
 /// Write title metadata into audio file via ffmpeg codec copy.
 /// If flip_hebrew is true, reverses Hebrew character runs in the title.
-/// Apply the same filename sanitization as yt-dlp --windows-filenames:
-/// replace forbidden Windows chars with their fullwidth Unicode equivalents.
-fn sanitize_windows_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            '"' => '\u{FF02}',  // ＂
-            '*' => '\u{FF0A}',  // ＊
-            ':' => '\u{FF1A}',  // ：
-            '<' => '\u{FF1C}',  // ＜
-            '>' => '\u{FF1E}',  // ＞
-            '?' => '\u{FF1F}',  // ？
-            '\\' => '\u{FF3C}', // ＼
-            '|' => '\u{FF5C}',  // ｜
-            '/' => '\u{FF0F}',  // ／
-            _ => c,
-        })
-        .collect()
-}
-
 async fn embed_title_tag(
     file_path: &std::path::Path,
     title: &str,
@@ -260,39 +224,6 @@ pub async fn check_binaries(app: tauri::AppHandle) -> Result<Vec<String>, String
     Ok(missing)
 }
 
-/// Build the yt-dlp cookie flags for the current config.
-///
-/// YouTube answers plain requests with "Sign in to confirm you're not a bot"
-/// more and more often; passing cookies from a signed-in session is yt-dlp's
-/// documented way around it.
-///
-/// Values are re-validated here (not only in `set_config`) so a hand-edited or
-/// tampered config.json can never smuggle extra flags into the yt-dlp command
-/// line: the browser must be on the allowlist, and the cookie file must be an
-/// existing absolute path (which can never start with `-`).
-fn cookie_args(config: &AppConfig) -> Vec<String> {
-    match config.cookies_mode.as_str() {
-        "browser" => {
-            let browser = config.cookies_browser.trim();
-            if ALLOWED_COOKIE_BROWSERS.contains(&browser) {
-                vec!["--cookies-from-browser".to_string(), browser.to_string()]
-            } else {
-                Vec::new()
-            }
-        }
-        "file" => {
-            let raw = config.cookies_file.trim();
-            let path = std::path::Path::new(raw);
-            if path.is_absolute() && path.is_file() {
-                vec!["--cookies".to_string(), raw.to_string()]
-            } else {
-                Vec::new()
-            }
-        }
-        _ => Vec::new(),
-    }
-}
-
 /// Run yt-dlp with args and return (stdout, stderr, success)
 async fn run_ytdlp(
     app: &tauri::AppHandle,
@@ -313,56 +244,6 @@ async fn run_ytdlp(
 }
 
 /// Decode process output bytes, handling Windows ANSI code pages (Hebrew, etc.)
-fn decode_output(bytes: &[u8]) -> String {
-    if let Ok(s) = std::str::from_utf8(bytes) {
-        return s.to_string();
-    }
-
-    #[cfg(windows)]
-    {
-        use std::ffi::OsString;
-        use std::os::windows::ffi::OsStringExt;
-
-        extern "system" {
-            fn MultiByteToWideChar(
-                code_page: u32,
-                flags: u32,
-                src: *const u8,
-                src_len: i32,
-                dst: *mut u16,
-                dst_len: i32,
-            ) -> i32;
-        }
-
-        const CP_ACP: u32 = 0;
-
-        let src_len = match i32::try_from(bytes.len()) {
-            Ok(n) => n,
-            Err(_) => return String::from_utf8_lossy(bytes).to_string(),
-        };
-
-        unsafe {
-            let wide_len =
-                MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), src_len, std::ptr::null_mut(), 0);
-            if wide_len > 0 {
-                let mut wide = vec![0u16; wide_len as usize];
-                MultiByteToWideChar(
-                    CP_ACP,
-                    0,
-                    bytes.as_ptr(),
-                    src_len,
-                    wide.as_mut_ptr(),
-                    wide_len,
-                );
-                return OsString::from_wide(&wide).to_string_lossy().to_string();
-            }
-        }
-    }
-
-    String::from_utf8_lossy(bytes).to_string()
-}
-
-// --- Structs ---
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
@@ -465,36 +346,6 @@ fn kill_process_tree(pid: u32) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn version_is_newer(latest: &str, current: &str) -> bool {
-    let parse = |v: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() >= 3 {
-            Some((
-                parts[0].parse().ok()?,
-                parts[1].parse().ok()?,
-                parts[2].parse().ok()?,
-            ))
-        } else {
-            None
-        }
-    };
-    match (parse(latest), parse(current)) {
-        (Some(l), Some(c)) => l > c,
-        _ => latest > current,
-    }
-}
-
-fn is_valid_youtube_url(url: &str) -> bool {
-    let url = url.trim();
-    if url.len() > 2048 {
-        return false;
-    }
-    url.starts_with("https://www.youtube.com/")
-        || url.starts_with("https://youtube.com/")
-        || url.starts_with("https://youtu.be/")
-        || url.starts_with("https://music.youtube.com/")
 }
 
 // --- Disk space ---
@@ -978,36 +829,13 @@ pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, Stri
         {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        if config.embed_thumbnail {
-            cmd.arg("--embed-thumbnail");
-        }
-        // Cookies from a signed-in session, when configured — this is what gets
-        // past "Sign in to confirm you're not a bot".
-        cmd.args(cookie_args(&config));
-        cmd.args(PACING_ARGS);
         let result = cmd
-            .args([
-                // A watch URL carrying &list= would otherwise pull the whole
-                // playlist under this one progress row. Playlists have their own
-                // flow (fetch_playlist + the picker), which queues each entry.
-                "--no-playlist",
-                "-f",
-                "bestaudio/best",
-                "--recode-video",
-                &config.audio_format,
-                "--newline",
-                "--progress",
-                "--windows-filenames",
-                "--ffmpeg-location",
+            .args(download_args(
+                &config,
                 &ffmpeg_path,
-                "--print",
-                "before_dl:YTDL_TITLE:%(title)s",
-                "--print",
-                "after_move:YTDL_FILEPATH:%(filepath)s",
-                "-o",
                 &output_template,
                 &url_clone,
-            ])
+            ))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
@@ -1083,8 +911,8 @@ pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, Stri
                         }
                     }
 
-                    if let Some(caps) = PROGRESS_RE.captures(&line) {
-                        if let Ok(pct) = caps[1].parse::<f64>() {
+                    if let Some(pct) = parse_progress_percent(&line) {
+                        {
                             let status = if line.contains("[ExtractAudio]")
                                 || line.contains("[VideoConvertor]")
                                 || line.contains("Post-process")
@@ -1283,78 +1111,5 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
         Ok(())
     } else {
         Err("download not found or already finished".to_string())
-    }
-}
-
-#[cfg(test)]
-mod cookie_tests {
-    use super::cookie_args;
-    use crate::config::AppConfig;
-
-    fn config(mode: &str, browser: &str, file: &str) -> AppConfig {
-        AppConfig {
-            cookies_mode: mode.to_string(),
-            cookies_browser: browser.to_string(),
-            cookies_file: file.to_string(),
-            ..AppConfig::default()
-        }
-    }
-
-    #[test]
-    fn none_mode_adds_no_args() {
-        assert!(cookie_args(&config("none", "chrome", "")).is_empty());
-    }
-
-    #[test]
-    fn browser_mode_passes_allowlisted_browser() {
-        assert_eq!(
-            cookie_args(&config("browser", "firefox", "")),
-            vec!["--cookies-from-browser".to_string(), "firefox".to_string()]
-        );
-    }
-
-    #[test]
-    fn browser_mode_rejects_unknown_browser() {
-        assert!(cookie_args(&config("browser", "netscape", "")).is_empty());
-    }
-
-    #[test]
-    fn browser_mode_rejects_injected_flags() {
-        // A tampered config must not be able to append yt-dlp flags.
-        assert!(cookie_args(&config("browser", "chrome --exec calc.exe", "")).is_empty());
-        assert!(cookie_args(&config("browser", "--exec", "")).is_empty());
-    }
-
-    #[test]
-    fn file_mode_rejects_relative_or_missing_paths() {
-        assert!(cookie_args(&config("file", "", "cookies.txt")).is_empty());
-        assert!(cookie_args(&config("file", "", "-cookies.txt")).is_empty());
-        let missing = if cfg!(windows) {
-            "C:\\definitely\\missing\\cookies.txt"
-        } else {
-            "/definitely/missing/cookies.txt"
-        };
-        assert!(cookie_args(&config("file", "", missing)).is_empty());
-    }
-
-    #[test]
-    fn file_mode_passes_existing_absolute_path() {
-        let dir = std::env::temp_dir().join("yd_cookie_args_test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("cookies.txt");
-        std::fs::write(&file, "# Netscape HTTP Cookie File\n").unwrap();
-        let path = file.to_string_lossy().to_string();
-
-        assert_eq!(
-            cookie_args(&config("file", "", &path)),
-            vec!["--cookies".to_string(), path.clone()]
-        );
-
-        std::fs::remove_file(&file).ok();
-    }
-
-    #[test]
-    fn unknown_mode_adds_no_args() {
-        assert!(cookie_args(&config("magic", "chrome", "")).is_empty());
     }
 }
