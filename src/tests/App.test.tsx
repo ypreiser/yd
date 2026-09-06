@@ -537,4 +537,45 @@ describe("App", () => {
       await waitFor(() => expect(downloadSpy).toHaveBeenCalled());
     });
   });
+
+  describe("history tab", () => {
+    it("switches to history and back", async () => {
+      vi.spyOn(tauriLib, "historyList").mockResolvedValue([]);
+      render(<App />);
+      await waitFor(() => screen.getByRole("tab", { name: t.history }));
+
+      fireEvent.click(screen.getByRole("tab", { name: t.history }));
+
+      expect(await screen.findByText(t.historyEmpty)).toBeInTheDocument();
+      // The in-progress list is not shown alongside history
+      expect(screen.queryByText(t.noDownloads)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("tab", { name: "URL" }));
+      expect(await screen.findByText(t.noDownloads)).toBeInTheDocument();
+    });
+
+    it("re-downloading from history queues the URL", async () => {
+      vi.spyOn(tauriLib, "historyList").mockResolvedValue([
+        {
+          id: "h1",
+          url: "https://youtu.be/abc",
+          title: "Old song",
+          file_path: null,
+          format: "m4a",
+          completed_at: 1_700_000_000,
+        },
+      ]);
+      const downloadSpy = vi
+        .spyOn(tauriLib, "downloadBatch")
+        .mockResolvedValue(["id-1"]);
+      render(<App />);
+
+      fireEvent.click(await screen.findByRole("tab", { name: t.history }));
+      fireEvent.click(await screen.findByRole("button", { name: t.redownload }));
+
+      await waitFor(() =>
+        expect(downloadSpy).toHaveBeenCalledWith(["https://youtu.be/abc"])
+      );
+    });
+  });
 });

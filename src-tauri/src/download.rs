@@ -1179,6 +1179,18 @@ pub async fn download(app: tauri::AppHandle, url: String) -> Result<String, Stri
                     crate::logging::log_error(&app, "download", err);
                 }
 
+                // Record what actually landed on disk, so the list survives a
+                // restart and a failed batch can be resumed from history.
+                if success && !was_cancelled {
+                    crate::history::record(
+                        &app,
+                        &url_clone,
+                        title.as_deref().unwrap_or(&url_clone),
+                        filepath.clone(),
+                        &config.audio_format,
+                    );
+                }
+
                 let (status, error): (String, Option<String>) = if was_cancelled {
                     ("cancelled".to_string(), None)
                 } else if success && already_exists {

@@ -172,3 +172,27 @@ export async function buildErrorReport(
 ): Promise<string> {
   return invoke("build_error_report", { ytdlpVersion: ytdlpVersion ?? null });
 }
+
+// --- download history ---
+
+export interface HistoryEntry {
+  id: string;
+  url: string;
+  title: string;
+  file_path: string | null;
+  format: string;
+  /** Unix seconds, UTC. */
+  completed_at: number;
+}
+
+export async function historyList(): Promise<HistoryEntry[]> {
+  return invoke("history_list");
+}
+
+export async function historyRemove(id: string): Promise<void> {
+  return invoke("history_remove", { id });
+}
+
+export async function historyClear(): Promise<void> {
+  return invoke("history_clear");
+}

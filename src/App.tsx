@@ -4,6 +4,7 @@ import UrlInput from "./components/UrlInput";
 import DownloadList from "./components/DownloadList";
 import Settings from "./components/Settings";
 import SearchBar from "./components/SearchBar";
+import HistoryList from "./components/HistoryList";
 import type { DownloadProgress, AppConfig } from "./lib/tauri";
 import {
   downloadBatch,
@@ -21,7 +22,7 @@ import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
-type InputMode = "url" | "search";
+type InputMode = "url" | "search" | "history";
 
 type UpdateStatus = "idle" | "available" | "downloading" | "ready";
 
@@ -473,12 +474,23 @@ function App() {
             >
               {t.search}
             </button>
+            <button
+              role="tab"
+              aria-selected={inputMode === "history"}
+              onClick={() => setInputMode("history")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                inputMode === "history"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              {t.history}
+            </button>
           </div>
-          {inputMode === "url" ? (
-            <UrlInput onSubmit={handleSubmit} />
-          ) : (
-            <SearchBar onDownload={handleSubmit} />
-          )}
+          {inputMode === "url" && <UrlInput onSubmit={handleSubmit} />}
+          {inputMode === "search" && <SearchBar onDownload={handleSubmit} />}
+          {inputMode === "history" && <HistoryList onDownload={handleSubmit} />}
+          {inputMode !== "history" && (
           <DownloadList
             items={items}
             onClear={handleClear}
@@ -488,6 +500,7 @@ function App() {
               setSettingsOpen(true);
             }}
           />
+          )}
         </div>
         {settingsOpen && (
           <SettingsDrawer

@@ -58,6 +58,12 @@ vi.mock("@tauri-apps/api/core", () => ({
         return { path: "C:\\Users\\test\\AppData\\yd\\logs\\errors.log", entries: 0 };
       case "clear_error_log":
         return undefined;
+      case "history_list":
+        return [];
+      case "history_remove":
+        return undefined;
+      case "history_clear":
+        return undefined;
       case "build_error_report":
         return "### Environment\n- App: YD 1.2.1\n";
       default:

@@ -13,6 +13,7 @@ Tauri v2 desktop app for downloading YouTube songs as audio files using yt-dlp.
 - Online / offline indicator (tells "no internet" apart from "YouTube unreachable")
 - Cookie support with in-app, step-by-step instructions for YouTube's bot check
 - Local error log and a one-click, user-reviewed bug report
+- Download history that survives restarts, with re-download and reveal-in-folder
 
 ## Install
 

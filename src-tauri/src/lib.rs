@@ -1,6 +1,7 @@
 mod config;
 mod download;
 mod hebrew;
+mod history;
 mod logging;
 mod net;
 mod signature;
@@ -40,6 +41,9 @@ pub fn run() {
             logging::clear_error_log,
             logging::build_error_report,
             net::check_connectivity,
+            history::history_list,
+            history::history_remove,
+            history::history_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

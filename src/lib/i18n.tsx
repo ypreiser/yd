@@ -77,6 +77,13 @@ export interface Translations {
   embedThumbnail: string;
   flipHebrewInTitle: string;
   metadata: string;
+  // history
+  history: string;
+  historyEmpty: string;
+  redownload: string;
+  removeFromHistory: string;
+  clearHistory: string;
+  showInFolder: string;
   // cookies
   cookies: string;
   cookiesHelp: string;
@@ -194,6 +201,12 @@ const en: Translations = {
   embedThumbnail: "Embed Thumbnail",
   flipHebrewInTitle: "Flip Hebrew in Title",
   metadata: "Metadata",
+  history: "History",
+  historyEmpty: "Nothing downloaded yet",
+  redownload: "Download again",
+  removeFromHistory: "Remove from history",
+  clearHistory: "Clear history",
+  showInFolder: "Show in folder",
   cookies: "YouTube Cookies",
   cookiesHelp:
     "Use cookies from a signed-in YouTube session when YouTube asks you to confirm you're not a bot.",
@@ -323,6 +336,12 @@ const he: Translations = {
   embedThumbnail: "הטמע תמונה ממוזערת",
   flipHebrewInTitle: "הפוך עברית בכותרת",
   metadata: "מטא-דאטה",
+  history: "היסטוריה",
+  historyEmpty: "עדיין לא הורדת כלום",
+  redownload: "הורד שוב",
+  removeFromHistory: "הסר מההיסטוריה",
+  clearHistory: "נקה היסטוריה",
+  showInFolder: "הצג בתיקייה",
   cookies: "עוגיות YouTube",
   cookiesHelp:
     "השתמש בעוגיות מחשבון YouTube מחובר כאשר יוטיוב מבקש לאמת שאינך רובוט.",
