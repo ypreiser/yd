@@ -3,6 +3,7 @@ mod download;
 mod hebrew;
 mod logging;
 mod net;
+mod signature;
 
 use download::{DownloadState, SearchState};
 

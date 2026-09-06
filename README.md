@@ -116,6 +116,23 @@ What the log contains, and what it never contains:
 - The log rotates at 256 KB and keeps one previous file, so it cannot grow
   without bound.
 
+## Updating yt-dlp
+
+Settings → yt-dlp Version → Check / Update downloads the latest yt-dlp from its
+GitHub releases. Before anything is written to disk:
+
+1. `SHA2-256SUMS.sig` is verified against yt-dlp's release signing key, pinned in
+   this app at `src-tauri/keys/ytdlp-signing-key.asc`
+   (`AC0C BBE6 848D 6A87 3464  AF4E 57CF 6593 3B5A 7581`).
+2. The binary's SHA-256 is matched against the now-trusted checksum line, by
+   exact filename.
+
+If yt-dlp rotates its signing key, updates will fail with a signature error
+until this app ships the new key. That is deliberate — refusing beats installing
+code that cannot be verified. To update the pinned key, replace that file and
+the fingerprint constant in `src-tauri/src/signature.rs`, then refresh the
+fixtures in `src-tauri/fixtures/` so the tests cover the new key.
+
 ## Network activity
 
 Besides yt-dlp's own traffic, the app makes two kinds of request:

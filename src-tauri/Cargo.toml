@@ -26,6 +26,9 @@ regex = "1"
 dirs = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
+# Detached-signature verification for the yt-dlp self-update. Default features
+# pull in bzip2 (a C build) which signature checking does not need.
+pgp = { version = "0.20", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

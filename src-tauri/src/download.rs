@@ -620,23 +620,47 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 
     let client = reqwest::Client::new();
 
-    // Fetch SHA256 checksums from release
-    let checksums_text = client
+    // Fetch the checksum file and its detached OpenPGP signature.
+    //
+    // The checksums and the binary come from the same origin, so on their own
+    // they only prove the download was not corrupted. Verifying the signature
+    // against yt-dlp's pinned signing key is what proves who produced them.
+    let checksums = client
         .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS")
         .header("User-Agent", "yd-app")
         .send()
         .await
         .map_err(|e| e.to_string())?
-        .text()
+        .bytes()
         .await
         .map_err(|e| e.to_string())?;
 
+    let signature = client
+        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS.sig")
+        .header("User-Agent", "yd-app")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    crate::signature::verify_ytdlp_checksums(&checksums, &signature)
+        .map_err(|e| format!("Refusing to update: {}", e))?;
+
+    let checksums_text = String::from_utf8_lossy(&checksums);
+
+    // Match the filename field exactly. `ends_with` would also accept a future
+    // asset whose name merely ends with this one.
     let expected_hash = checksums_text
         .lines()
-        .find(|line| line.ends_with(binary_name))
-        .and_then(|line| line.split_whitespace().next())
-        .ok_or_else(|| format!("Checksum not found for {}", binary_name))?
-        .to_string();
+        .find_map(|line| {
+            let mut fields = line.split_whitespace();
+            let hash = fields.next()?;
+            let name = fields.next()?;
+            (name.trim_start_matches('*') == binary_name).then(|| hash.to_string())
+        })
+        .ok_or_else(|| format!("Checksum not found for {}", binary_name))?;
 
     // Download binary
     let bytes = client
