@@ -478,5 +478,63 @@ describe("App", () => {
         expect(screen.getByRole("status")).toHaveTextContent(t.offline)
       );
     });
+
+    it("warns above the input when offline", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      render(<App />);
+
+      expect(await screen.findByText(t.offlineBanner)).toBeInTheDocument();
+    });
+
+    it("warns differently when only YouTube is unreachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: false,
+      });
+      render(<App />);
+
+      expect(
+        await screen.findByText(t.youtubeUnreachableBanner)
+      ).toBeInTheDocument();
+    });
+
+    it("shows no banner while everything is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: true,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(t.online)
+      );
+      expect(screen.queryByText(t.offlineBanner)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(t.youtubeUnreachableBanner)
+      ).not.toBeInTheDocument();
+    });
+
+    it("still allows downloads while offline — the probe can be wrong", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      const downloadSpy = vi
+        .spyOn(tauriLib, "downloadBatch")
+        .mockResolvedValue(["id-1"]);
+      render(<App />);
+      await screen.findByText(t.offlineBanner);
+
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, {
+        target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Download/i }));
+
+      await waitFor(() => expect(downloadSpy).toHaveBeenCalled());
+    });
   });
 });

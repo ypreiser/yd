@@ -16,6 +16,7 @@ import {
 } from "./lib/tauri";
 import { I18nContext, getTranslations, isRTL, useT } from "./lib/i18n";
 import { useConnectivity } from "./lib/useConnectivity";
+import type { ConnectionState } from "./lib/useConnectivity";
 import type { Language } from "./lib/i18n";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -137,9 +138,8 @@ function UpdateBanner() {
   );
 }
 
-function ConnectionIndicator() {
+function ConnectionIndicator({ state }: { state: ConnectionState }) {
   const t = useT();
-  const state = useConnectivity();
 
   const { dot, label } = {
     online: { dot: "bg-green-500", label: t.online },
@@ -163,14 +163,39 @@ function ConnectionIndicator() {
   );
 }
 
+/**
+ * The indicator alone is easy to miss, and a user whose network is down should
+ * not have to read a yt-dlp error to find that out. Say it once, above the
+ * input — without blocking downloads, since the probe can be wrong (a proxy, a
+ * blocked probe endpoint) and the user knows their network better than we do.
+ */
+function ConnectionBanner({ state }: { state: ConnectionState }) {
+  const t = useT();
+  if (state === "online") return null;
+
+  const offline = state === "offline";
+  return (
+    <div
+      role="alert"
+      className={`flex items-center px-4 py-2 text-sm text-white ${
+        offline ? "bg-red-600" : "bg-amber-600"
+      }`}
+    >
+      {offline ? t.offlineBanner : t.youtubeUnreachableBanner}
+    </div>
+  );
+}
+
 function Header({
   settingsOpen,
   toggleSettings,
   closeSettings,
+  connection,
 }: {
   settingsOpen: boolean;
   toggleSettings: () => void;
   closeSettings: () => void;
+  connection: ConnectionState;
 }) {
   const t = useT();
   return (
@@ -182,7 +207,7 @@ function Header({
         {t.appTitle}
       </h1>
       <div className="flex items-center gap-4">
-        <ConnectionIndicator />
+        <ConnectionIndicator state={connection} />
         <button
           onClick={toggleSettings}
           aria-label={settingsOpen ? t.back : t.settings}
@@ -283,6 +308,7 @@ function SettingsDrawer({
 }
 
 function App() {
+  const connection = useConnectivity();
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Set when the drawer is opened from an auth error, so it lands on cookies.
   const [settingsSection, setSettingsSection] = useState<"cookies" | null>(null);
@@ -411,6 +437,7 @@ function App() {
       <main className="h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
         <BinaryCheckBanner />
         <UpdateBanner />
+        <ConnectionBanner state={connection} />
         <Header
           settingsOpen={settingsOpen}
           toggleSettings={() => {
@@ -418,6 +445,7 @@ function App() {
             setSettingsOpen((open) => !open);
           }}
           closeSettings={() => setSettingsOpen(false)}
+          connection={connection}
         />
         <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0">
           <div role="tablist" className="flex gap-1 p-1 rounded-lg bg-zinc-200/60 dark:bg-zinc-800 -mt-1 mb-1 self-start">

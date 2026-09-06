@@ -92,6 +92,8 @@ export interface Translations {
   online: string;
   offline: string;
   youtubeUnreachable: string;
+  offlineBanner: string;
+  youtubeUnreachableBanner: string;
   // cookie instructions
   cookiesHowTo: string;
   cookiesStepsBrowser: string[];
@@ -207,6 +209,9 @@ const en: Translations = {
   online: "Online",
   offline: "Offline",
   youtubeUnreachable: "YouTube unreachable",
+  offlineBanner: "No internet connection — downloads will fail until it comes back.",
+  youtubeUnreachableBanner:
+    "YouTube is not reachable from this network, though the internet is. Downloads will fail until that changes.",
   cookiesHowTo: "How do I get cookies?",
   cookiesStepsBrowser: [
     "Sign in to YouTube in the browser you pick below.",
@@ -333,6 +338,9 @@ const he: Translations = {
   online: "מחובר",
   offline: "לא מחובר",
   youtubeUnreachable: "אין גישה ליוטיוב",
+  offlineBanner: "אין חיבור לאינטרנט — הורדות ייכשלו עד שהחיבור יחזור.",
+  youtubeUnreachableBanner:
+    "יוטיוב אינו נגיש מהרשת הזו, למרות שיש אינטרנט. הורדות ייכשלו עד שזה ישתנה.",
   cookiesHowTo: "איך משיגים עוגיות?",
   cookiesStepsBrowser: [
     "התחבר ליוטיוב בדפדפן שתבחר למטה.",
