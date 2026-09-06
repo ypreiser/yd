@@ -36,6 +36,8 @@ pub fn run() {
             download::check_binaries,
             download::check_disk_space,
             download::cancel_search,
+            download::test_cookies,
+            download::cookie_browser_is_chromium,
             logging::log_app_error,
             logging::error_log_info,
             logging::clear_error_log,

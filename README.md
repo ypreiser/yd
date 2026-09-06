@@ -67,9 +67,12 @@ things fix it, in order of effort:
 2. **Give yt-dlp cookies from a signed-in session** — Settings → YouTube
    Cookies:
    - **From browser**: pick the browser you're signed in to YouTube with.
-     Firefox is the most reliable choice; on Windows, Chrome/Edge/Brave encrypt
-     their cookie store so yt-dlp often cannot read it, and the browser must be
-     fully closed while downloading.
+     On Windows this means **Firefox** — Chrome, Edge, Brave, Opera and Vivaldi
+     use app-bound encryption (Chrome 127+), which ties the cookie store to the
+     browser process itself. yt-dlp finds those cookies and then fails with
+     "Failed to decrypt with DPAPI", and no setting on our side can change that.
+     Settings warns before you hit it, and **Test cookies** confirms whether the
+     source actually works before you queue a download.
    - **cookies.txt file**: export cookies for `youtube.com` in Netscape format
      with a browser extension and point the app at the file. This is the option
      that always works, including on Windows.

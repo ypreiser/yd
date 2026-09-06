@@ -491,4 +491,82 @@ describe("Settings", () => {
       await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     });
   });
+
+  describe("cookie diagnostics", () => {
+    async function chooseBrowser(browser: string) {
+      renderSettings();
+      fireEvent.click(
+        await screen.findByRole("button", { name: t.cookiesFromBrowser })
+      );
+      const select = (await screen.findByLabelText(
+        t.cookiesBrowser
+      )) as HTMLSelectElement;
+      await userEvent.selectOptions(select, browser);
+      return select;
+    }
+
+    it("warns that a Chromium browser cannot work on Windows", async () => {
+      await chooseBrowser("chrome");
+      expect(screen.getByText(t.cookiesChromiumWarning)).toBeInTheDocument();
+    });
+
+    it("does not warn for Firefox", async () => {
+      await chooseBrowser("firefox");
+      expect(
+        screen.queryByText(t.cookiesChromiumWarning)
+      ).not.toBeInTheDocument();
+    });
+
+    it("reports a working cookie source", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "ok",
+        detail: "",
+      });
+      await chooseBrowser("firefox");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+
+      expect(await screen.findByText(t.cookiesTestOk)).toBeInTheDocument();
+    });
+
+    it("explains the DPAPI failure instead of showing raw yt-dlp output", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "decrypt_failed",
+        detail: "WARNING: Failed to decrypt with DPAPI",
+      });
+      await chooseBrowser("chrome");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+
+      expect(
+        await screen.findByText(t.cookiesTestDecryptFailed)
+      ).toBeInTheDocument();
+    });
+
+    it("clears a stale result when the browser changes", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "ok",
+        detail: "",
+      });
+      const select = await chooseBrowser("firefox");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+      await screen.findByText(t.cookiesTestOk);
+
+      await userEvent.selectOptions(select, "chrome");
+
+      expect(screen.queryByText(t.cookiesTestOk)).not.toBeInTheDocument();
+    });
+
+    it("offers no test button when cookies are off", async () => {
+      renderSettings();
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesNone }));
+      expect(
+        screen.queryByRole("button", { name: t.cookiesTest })
+      ).not.toBeInTheDocument();
+    });
+  });
 });

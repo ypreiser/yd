@@ -61,6 +61,14 @@ pub fn cookie_args(config: &AppConfig) -> Vec<String> {
     }
 }
 
+/// Chromium-family browsers. On Windows these encrypt their cookie store with
+/// app-bound encryption (Chrome 127+), which yt-dlp cannot decrypt — it fails
+/// with "Failed to decrypt with DPAPI". Firefox and a cookies.txt file are the
+/// routes that actually work there.
+pub const CHROMIUM_BROWSERS: &[&str] = &[
+    "brave", "chrome", "chromium", "edge", "opera", "vivaldi", "whale",
+];
+
 /// Every flag a download runs with, in order, ending with the URL.
 ///
 /// The URL is passed through by the caller, which has already checked it with

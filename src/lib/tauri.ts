@@ -173,6 +173,44 @@ export async function buildErrorReport(
   return invoke("build_error_report", { ytdlpVersion: ytdlpVersion ?? null });
 }
 
+// --- cookie diagnostics ---
+
+export type CookieTestStatus =
+  | "ok"
+  | "none"
+  | "decrypt_failed"
+  | "not_found"
+  | "blocked"
+  | "error";
+
+export interface CookieTest {
+  status: CookieTestStatus;
+  detail: string;
+}
+
+/** Runs a tiny real yt-dlp request with the configured cookie source. */
+export async function testCookies(): Promise<CookieTest> {
+  return invoke("test_cookies");
+}
+
+/**
+ * Chromium-family browsers, whose Windows cookie store yt-dlp cannot decrypt
+ * (app-bound encryption, Chrome 127+).
+ */
+export const CHROMIUM_BROWSERS = [
+  "chrome",
+  "chromium",
+  "edge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "whale",
+];
+
+export function isChromiumBrowser(browser: string): boolean {
+  return CHROMIUM_BROWSERS.includes(browser.trim());
+}
+
 // --- download history ---
 
 export interface HistoryEntry {

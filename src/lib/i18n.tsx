@@ -106,6 +106,15 @@ export interface Translations {
   cookiesStepsBrowser: string[];
   cookiesStepsFile: string[];
   cookiesGuideLink: string;
+  cookiesChromiumWarning: string;
+  cookiesTest: string;
+  cookiesTesting: string;
+  cookiesTestOk: string;
+  cookiesTestNone: string;
+  cookiesTestDecryptFailed: string;
+  cookiesTestNotFound: string;
+  cookiesTestBlocked: string;
+  cookiesTestError: string;
   // problem reports
   reportProblem: string;
   reportHelp: string;
@@ -131,6 +140,7 @@ export interface Translations {
   errVideoRemoved: string;
   errBotCheck: string;
   errCookiesInvalid: string;
+  errCookieDecrypt: string;
 }
 
 const en: Translations = {
@@ -230,7 +240,7 @@ const en: Translations = {
     "Sign in to YouTube in the browser you pick below.",
     "Close that browser completely — it locks its cookie database while running.",
     "Pick the browser and press Save, then start a download.",
-    "On Windows, Chrome/Edge/Brave usually refuse to hand over cookies. If it keeps failing, use the cookies.txt option instead.",
+    "On Windows, Chrome/Edge/Brave/Opera/Vivaldi will NOT work: they encrypt cookies so only the browser can read them. Firefox works; otherwise use the cookies.txt option.",
   ],
   cookiesStepsFile: [
     "Install a cookies.txt exporter extension in your browser (search the store for \"Get cookies.txt\").",
@@ -240,6 +250,19 @@ const en: Translations = {
     "Press Browse below, pick the file, and Save.",
   ],
   cookiesGuideLink: "yt-dlp cookie export guide",
+  cookiesChromiumWarning:
+    "On Windows this browser encrypts its cookies so only the browser itself can read them (app-bound encryption, Chrome 127+). yt-dlp fails with \"Failed to decrypt with DPAPI\". Use Firefox, or export a cookies.txt file.",
+  cookiesTest: "Test cookies",
+  cookiesTesting: "Testing...",
+  cookiesTestOk: "Cookies work",
+  cookiesTestNone: "No cookies configured",
+  cookiesTestDecryptFailed:
+    "Cookies were found but could not be decrypted — this browser's cookie store is locked to the browser itself on Windows. Use Firefox, or export a cookies.txt file.",
+  cookiesTestNotFound:
+    "No cookie store found for that browser. Is it installed and signed in to YouTube?",
+  cookiesTestBlocked:
+    "The cookies loaded, but YouTube still asked for verification. Sign in to YouTube in that browser and export again.",
+  cookiesTestError: "The cookie test failed",
   reportProblem: "Report a Problem",
   reportHelp:
     "Errors are written to a local log file. Nothing is sent anywhere unless you choose to send it.",
@@ -266,6 +289,8 @@ const en: Translations = {
     "YouTube asked to confirm you're not a bot. Open Settings → YouTube Cookies and supply cookies from your browser or a cookies.txt file (updating yt-dlp can help too).",
   errCookiesInvalid:
     "The YouTube cookies are no longer valid. Sign in to YouTube again and re-export them in Settings → YouTube Cookies.",
+  errCookieDecrypt:
+    "Your browser's cookies could not be decrypted — on Windows, Chromium browsers lock their cookie store to the browser itself. Switch to Firefox or a cookies.txt file in Settings → YouTube Cookies.",
 };
 
 const he: Translations = {
@@ -365,7 +390,7 @@ const he: Translations = {
     "התחבר ליוטיוב בדפדפן שתבחר למטה.",
     "סגור את הדפדפן לגמרי — כל עוד הוא פועל הוא נועל את מסד העוגיות.",
     "בחר את הדפדפן, לחץ שמירה והתחל הורדה.",
-    "בחלונות, Chrome/Edge/Brave לרוב לא מאפשרים קריאת עוגיות. אם זה ממשיך להיכשל, השתמש באפשרות קובץ cookies.txt.",
+    "בחלונות, Chrome/Edge/Brave/Opera/Vivaldi לא יעבדו: הם מצפינים את העוגיות כך שרק הדפדפן יכול לקרוא אותן. Firefox עובד; אחרת השתמש בקובץ cookies.txt.",
   ],
   cookiesStepsFile: [
     "התקן בדפדפן תוסף לייצוא cookies.txt (חפש בחנות \"Get cookies.txt\").",
@@ -375,6 +400,19 @@ const he: Translations = {
     "לחץ עיון למטה, בחר את הקובץ ושמור.",
   ],
   cookiesGuideLink: "מדריך ייצוא עוגיות של yt-dlp",
+  cookiesChromiumWarning:
+    "בחלונות הדפדפן הזה מצפין את העוגיות כך שרק הוא עצמו יכול לקרוא אותן (app-bound encryption, Chrome 127+). yt-dlp נכשל עם \"Failed to decrypt with DPAPI\". השתמש ב-Firefox או ייצא קובץ cookies.txt.",
+  cookiesTest: "בדוק עוגיות",
+  cookiesTesting: "בודק...",
+  cookiesTestOk: "העוגיות עובדות",
+  cookiesTestNone: "לא הוגדרו עוגיות",
+  cookiesTestDecryptFailed:
+    "נמצאו עוגיות אך לא ניתן לפענח אותן — בחלונות מאגר העוגיות של הדפדפן הזה נעול אליו בלבד. השתמש ב-Firefox או ייצא קובץ cookies.txt.",
+  cookiesTestNotFound:
+    "לא נמצא מאגר עוגיות לדפדפן הזה. האם הוא מותקן ומחובר ליוטיוב?",
+  cookiesTestBlocked:
+    "העוגיות נטענו, אך יוטיוב עדיין ביקש אימות. התחבר ליוטיוב באותו דפדפן וייצא מחדש.",
+  cookiesTestError: "בדיקת העוגיות נכשלה",
   reportProblem: "דיווח על תקלה",
   reportHelp:
     "שגיאות נכתבות לקובץ יומן מקומי. שום דבר לא נשלח לשום מקום אלא אם תבחר לשלוח.",
@@ -401,6 +439,8 @@ const he: Translations = {
     "יוטיוב ביקש לאמת שאינך רובוט. פתח הגדרות ← עוגיות YouTube וספק עוגיות מהדפדפן או קובץ cookies.txt (גם עדכון yt-dlp עשוי לעזור).",
   errCookiesInvalid:
     "העוגיות של YouTube אינן תקפות עוד. התחבר שוב ליוטיוב וייצא אותן מחדש בהגדרות ← עוגיות YouTube.",
+  errCookieDecrypt:
+    "לא ניתן לפענח את העוגיות של הדפדפן — בחלונות, דפדפני Chromium נועלים את מאגר העוגיות אליהם בלבד. עבור ל-Firefox או לקובץ cookies.txt בהגדרות ← עוגיות YouTube.",
 };
 
 const locales: Record<Language, Translations> = { en, he };
@@ -429,6 +469,7 @@ const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
   // so match loosely on the distinctive part.
   [/Sign in to confirm[\s\S]{0,20}not a bot/i, "errBotCheck"],
   [/cookies are no longer valid/i, "errCookiesInvalid"],
+  [/DPAPI|failed to decrypt cookie/i, "errCookieDecrypt"],
 ];
 
 /**
@@ -437,7 +478,11 @@ const ERROR_PATTERNS: [RegExp, keyof Translations][] = [
  */
 export type FixableError = "auth" | null;
 
-const AUTH_ERROR_KEYS: (keyof Translations)[] = ["errBotCheck", "errCookiesInvalid"];
+const AUTH_ERROR_KEYS: (keyof Translations)[] = [
+  "errBotCheck",
+  "errCookiesInvalid",
+  "errCookieDecrypt",
+];
 
 export function classifyError(raw: string): FixableError {
   for (const [pattern, key] of ERROR_PATTERNS) {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { AppConfig, CookiesMode } from "../lib/tauri";
+import type { AppConfig, CookiesMode, CookieTestStatus } from "../lib/tauri";
 import {
   getConfig,
   setConfig,
@@ -12,6 +12,8 @@ import {
   errorLogInfo,
   clearErrorLog,
   buildErrorReport,
+  testCookies,
+  isChromiumBrowser,
 } from "../lib/tauri";
 import { useT } from "../lib/i18n";
 import { getVersion } from "@tauri-apps/api/app";
@@ -46,6 +48,17 @@ function Steps({ title, steps }: { title: string; steps: string[] }) {
     </div>
   );
 }
+
+const COOKIE_TEST_MESSAGES: Record<
+  Exclude<CookieTestStatus, "ok">,
+  (t: ReturnType<typeof useT>) => string
+> = {
+  none: (t) => t.cookiesTestNone,
+  decrypt_failed: (t) => t.cookiesTestDecryptFailed,
+  not_found: (t) => t.cookiesTestNotFound,
+  blocked: (t) => t.cookiesTestBlocked,
+  error: (t) => t.cookiesTestError,
+};
 
 function Section({
   children,
@@ -91,6 +104,8 @@ export default function Settings({
   const [report, setReport] = useState<string | null>(null);
   const [reportError, setReportError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cookieTest, setCookieTest] = useState<CookieTestStatus | "testing" | null>(null);
+  const [cookieTestDetail, setCookieTestDetail] = useState("");
 
   useEffect(() => {
     getConfig().then(setLocalConfig);
@@ -105,6 +120,22 @@ export default function Settings({
       })
       .catch(() => {});
   }, []);
+
+  // The cookie source has to be saved before yt-dlp can be asked to use it.
+  async function handleTestCookies() {
+    if (!config) return;
+    setCookieTest("testing");
+    setCookieTestDetail("");
+    try {
+      await setConfig(config);
+      const result = await testCookies();
+      setCookieTest(result.status);
+      setCookieTestDetail(result.detail);
+    } catch (err) {
+      setCookieTest("error");
+      setCookieTestDetail(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function handlePrepareReport() {
     setReportError(false);
@@ -167,6 +198,7 @@ export default function Settings({
 
   function setCookiesMode(mode: CookiesMode) {
     if (!config) return;
+    setCookieTest(null);
     setLocalConfig({
       ...config,
       cookies_mode: mode,
@@ -410,9 +442,10 @@ export default function Settings({
                 id="cookies-browser"
                 title={t.cookiesBrowser}
                 value={config.cookies_browser || "firefox"}
-                onChange={(e) =>
-                  setLocalConfig({ ...config, cookies_browser: e.target.value })
-                }
+                onChange={(e) => {
+                  setCookieTest(null);
+                  setLocalConfig({ ...config, cookies_browser: e.target.value });
+                }}
                 className={inputClass}
               >
                 {COOKIE_BROWSERS.map((b) => (
@@ -449,6 +482,45 @@ export default function Settings({
                   {t.browse}
                 </button>
               </div>
+            </div>
+          )}
+
+          {config.cookies_mode === "browser" &&
+            isChromiumBrowser(config.cookies_browser) && (
+              <p
+                role="alert"
+                className="text-xs text-red-600 dark:text-red-400"
+              >
+                {t.cookiesChromiumWarning}
+              </p>
+            )}
+
+          {config.cookies_mode !== "none" && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleTestCookies}
+                  disabled={cookieTest === "testing"}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                >
+                  {cookieTest === "testing" ? t.cookiesTesting : t.cookiesTest}
+                </button>
+                {cookieTest === "ok" && (
+                  <span className="text-xs text-green-600 dark:text-green-500">
+                    {t.cookiesTestOk}
+                  </span>
+                )}
+              </div>
+              {cookieTest && cookieTest !== "testing" && cookieTest !== "ok" && (
+                <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+                  {COOKIE_TEST_MESSAGES[cookieTest](t)}
+                  {cookieTestDetail && (
+                    <span className="block mt-1 font-mono text-zinc-400 dark:text-zinc-500">
+                      {cookieTestDetail}
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           )}
 

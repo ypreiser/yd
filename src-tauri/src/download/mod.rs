@@ -18,7 +18,7 @@ mod args;
 mod text;
 mod urls;
 
-use args::{cookie_args, download_args};
+use args::{cookie_args, download_args, CHROMIUM_BROWSERS};
 
 use text::{decode_output, parse_progress_percent, sanitize_windows_filename};
 use urls::{is_valid_youtube_url, version_is_newer};
@@ -555,6 +555,102 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
 
     // Verify new binary works
     get_ytdlp_version(app).await
+}
+
+/// Outcome of checking whether the configured cookie source actually works.
+#[derive(Debug, Clone, Serialize)]
+pub struct CookieTest {
+    /// One of: ok, none, decrypt_failed, not_found, blocked, error.
+    pub status: String,
+    /// Short, redacted yt-dlp output — empty when there is nothing to add.
+    pub detail: String,
+}
+
+fn classify_cookie_failure(stderr: &str) -> &'static str {
+    let lower = stderr.to_lowercase();
+    // Chrome 127+ app-bound encryption: cookies are found but undecryptable.
+    if lower.contains("dpapi") || lower.contains("failed to decrypt") {
+        "decrypt_failed"
+    } else if lower.contains("could not find") || lower.contains("does not support") {
+        "not_found"
+    } else if lower.contains("not a bot") || lower.contains("sign in to confirm") {
+        "blocked"
+    } else {
+        "error"
+    }
+}
+
+/// Try the configured cookie source against a real (tiny) yt-dlp request.
+///
+/// Without this, a bad cookie source only shows up as a failed download later.
+/// The common case on Windows is cookies that are found but cannot be
+/// decrypted, which no amount of retrying will fix.
+#[tauri::command]
+pub async fn test_cookies(app: tauri::AppHandle) -> Result<CookieTest, String> {
+    let config = load_config(&app);
+    let cookies = cookie_args(&config);
+
+    if cookies.is_empty() {
+        return Ok(CookieTest {
+            status: "none".to_string(),
+            detail: String::new(),
+        });
+    }
+
+    // A one-result search is the cheapest request that still loads the cookie
+    // jar and talks to YouTube.
+    let mut args: Vec<String> = cookies;
+    args.extend(
+        [
+            "--flat-playlist",
+            "--no-download",
+            "--print",
+            "%(id)s",
+            "ytsearch1:test",
+        ]
+        .map(String::from),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let (_, stderr, success) = run_ytdlp(&app, &arg_refs).await?;
+    let stderr = decode_output(&stderr);
+
+    // yt-dlp reports an unreadable cookie store as a warning and carries on
+    // without cookies, so a zero exit code is not proof the cookies worked.
+    let decrypt_failed = classify_cookie_failure(&stderr) == "decrypt_failed"
+        && (stderr.to_lowercase().contains("dpapi")
+            || stderr.to_lowercase().contains("failed to decrypt"));
+
+    if success && !decrypt_failed {
+        return Ok(CookieTest {
+            status: "ok".to_string(),
+            detail: String::new(),
+        });
+    }
+
+    let status = if decrypt_failed {
+        "decrypt_failed"
+    } else {
+        classify_cookie_failure(&stderr)
+    };
+
+    crate::logging::log_error(&app, "cookie-test", &stderr);
+
+    Ok(CookieTest {
+        status: status.to_string(),
+        // Redacted, and short enough to sit in the settings panel.
+        detail: crate::logging::redact(stderr.lines().last().unwrap_or("").trim())
+            .chars()
+            .take(300)
+            .collect(),
+    })
+}
+
+/// Whether the selected browser is one that Windows app-bound encryption
+/// breaks, so the UI can warn before the user hits it.
+#[tauri::command]
+pub fn cookie_browser_is_chromium(browser: String) -> bool {
+    CHROMIUM_BROWSERS.contains(&browser.trim())
 }
 
 #[tauri::command]
@@ -1111,5 +1207,47 @@ pub async fn cancel_download(app: tauri::AppHandle, id: String) -> Result<(), St
         Ok(())
     } else {
         Err("download not found or already finished".to_string())
+    }
+}
+
+#[cfg(test)]
+mod cookie_test_classification {
+    use super::classify_cookie_failure;
+
+    #[test]
+    fn recognises_windows_app_bound_encryption() {
+        // What Chromium browsers on Windows actually produce.
+        assert_eq!(
+            classify_cookie_failure(
+                "WARNING: [Cookies] Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/7271"
+            ),
+            "decrypt_failed"
+        );
+        assert_eq!(
+            classify_cookie_failure("ERROR: failed to decrypt cookie (AES-GCM)"),
+            "decrypt_failed"
+        );
+    }
+
+    #[test]
+    fn recognises_a_missing_cookie_store() {
+        assert_eq!(
+            classify_cookie_failure("ERROR: could not find chrome cookies database"),
+            "not_found"
+        );
+    }
+
+    #[test]
+    fn recognises_the_bot_check() {
+        assert_eq!(
+            classify_cookie_failure("ERROR: Sign in to confirm you are not a bot"),
+            "blocked"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_a_generic_error() {
+        assert_eq!(classify_cookie_failure("ERROR: something else"), "error");
+        assert_eq!(classify_cookie_failure(""), "error");
     }
 }

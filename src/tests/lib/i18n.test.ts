@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { getTranslations, isRTL, translateError } from "../../lib/i18n";
+import {
+  getTranslations,
+  isRTL,
+  translateError,
+  classifyError,
+} from "../../lib/i18n";
 
 describe("getTranslations", () => {
   it("returns English translations", () => {
@@ -107,5 +112,22 @@ describe("translateError", () => {
       he.errBotCheck
     );
     expect(he.errBotCheck).not.toBe(t.errBotCheck);
+  });
+
+  it("maps the Windows cookie decryption failure", () => {
+    const t = getTranslations("en");
+    expect(
+      translateError(
+        "WARNING: [Cookies] Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/7271",
+        t
+      )
+    ).toBe(t.errCookieDecrypt);
+    expect(
+      translateError("ERROR: failed to decrypt cookie (AES-GCM)", t)
+    ).toBe(t.errCookieDecrypt);
+  });
+
+  it("treats the decryption failure as fixable from the download row", () => {
+    expect(classifyError("Failed to decrypt with DPAPI")).toBe("auth");
   });
 });
