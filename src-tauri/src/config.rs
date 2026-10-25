@@ -14,6 +14,13 @@ pub struct AppConfig {
     pub embed_title: bool,
     pub embed_thumbnail: bool,
     pub flip_hebrew_in_title: bool,
+    /// How cookies are supplied to yt-dlp: "none", "browser" or "file".
+    /// Needed when YouTube answers with "Sign in to confirm you're not a bot".
+    pub cookies_mode: String,
+    /// Browser to read cookies from when `cookies_mode == "browser"`.
+    pub cookies_browser: String,
+    /// Absolute path to a Netscape-format cookies.txt when `cookies_mode == "file"`.
+    pub cookies_file: String,
 }
 
 impl Default for AppConfig {
@@ -31,6 +38,9 @@ impl Default for AppConfig {
             embed_title: false,
             embed_thumbnail: false,
             flip_hebrew_in_title: false,
+            cookies_mode: "none".to_string(),
+            cookies_browser: String::new(),
+            cookies_file: String::new(),
         }
     }
 }
@@ -65,6 +75,12 @@ pub fn get_config(app: tauri::AppHandle) -> AppConfig {
 const ALLOWED_AUDIO_FORMATS: &[&str] = &["m4a", "mp3", "opus", "flac"];
 const ALLOWED_THEMES: &[&str] = &["dark", "light"];
 const ALLOWED_LANGUAGES: &[&str] = &["en", "he"];
+pub const ALLOWED_COOKIE_MODES: &[&str] = &["none", "browser", "file"];
+/// Browsers yt-dlp can read cookies from. Kept as a strict allowlist so a value
+/// from config.json can never be turned into an extra yt-dlp flag.
+pub const ALLOWED_COOKIE_BROWSERS: &[&str] = &[
+    "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
+];
 
 #[tauri::command]
 pub fn set_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String> {
@@ -80,6 +96,26 @@ pub fn set_config(app: tauri::AppHandle, config: AppConfig) -> Result<(), String
     }
     if !ALLOWED_LANGUAGES.contains(&config.language.as_str()) {
         return Err("Invalid language".to_string());
+    }
+    if !ALLOWED_COOKIE_MODES.contains(&config.cookies_mode.as_str()) {
+        return Err("Invalid cookies mode".to_string());
+    }
+    match config.cookies_mode.as_str() {
+        "browser" => {
+            if !ALLOWED_COOKIE_BROWSERS.contains(&config.cookies_browser.as_str()) {
+                return Err("Invalid cookies browser".to_string());
+            }
+        }
+        "file" => {
+            let path = std::path::Path::new(&config.cookies_file);
+            if !path.is_absolute() {
+                return Err("Cookies file must be an absolute path".to_string());
+            }
+            if !path.is_file() {
+                return Err("Cookies file does not exist".to_string());
+            }
+        }
+        _ => {}
     }
     save_config(&app, &config)
 }

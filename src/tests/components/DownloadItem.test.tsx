@@ -19,10 +19,14 @@ function mkItem(overrides: Partial<DownloadProgress> = {}): DownloadProgress {
   };
 }
 
-function renderItem(item: DownloadProgress, onRetry = vi.fn()) {
+function renderItem(
+  item: DownloadProgress,
+  onRetry = vi.fn(),
+  onFixCookies = vi.fn()
+) {
   return render(
     <I18nContext.Provider value={t}>
-      <DownloadItem item={item} onRetry={onRetry} />
+      <DownloadItem item={item} onRetry={onRetry} onFixCookies={onFixCookies} />
     </I18nContext.Provider>
   );
 }
@@ -194,5 +198,65 @@ describe("DownloadItem", () => {
   it("shows Hebrew title correctly", () => {
     renderItem(mkItem({ title: "שיר יפה - אמן", status: "downloading", percent: 10 }));
     expect(screen.getByText("שיר יפה - אמן")).toBeInTheDocument();
+  });
+
+  describe("actionable auth errors", () => {
+    const botError = mkItem({
+      status: "error",
+      error: "ERROR: Sign in to confirm you\u2019re not a bot. Use --cookies",
+    });
+
+    it("offers update-and-retry and cookie setup on the bot check", () => {
+      renderItem(botError);
+
+      expect(
+        screen.getByRole("button", { name: t.fixUpdateYtdlp })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: t.fixCookies })
+      ).toBeInTheDocument();
+    });
+
+    it("offers nothing extra for an ordinary error", () => {
+      renderItem(mkItem({ status: "error", error: "some other failure" }));
+
+      expect(
+        screen.queryByRole("button", { name: t.fixUpdateYtdlp })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: t.fixCookies })
+      ).not.toBeInTheDocument();
+    });
+
+    it("updates yt-dlp and then retries the download", async () => {
+      const updateSpy = vi.spyOn(tauriLib, "updateYtdlp").mockResolvedValue("2026.09.01");
+      const onRetry = vi.fn();
+      renderItem(botError, onRetry);
+
+      fireEvent.click(screen.getByRole("button", { name: t.fixUpdateYtdlp }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalled());
+      await waitFor(() => expect(onRetry).toHaveBeenCalledWith(botError.url));
+    });
+
+    it("does not retry when the update fails, and says so", async () => {
+      vi.spyOn(tauriLib, "updateYtdlp").mockRejectedValue("network down");
+      const onRetry = vi.fn();
+      renderItem(botError, onRetry);
+
+      fireEvent.click(screen.getByRole("button", { name: t.fixUpdateYtdlp }));
+
+      expect(await screen.findByText(t.fixUpdateFailed)).toBeInTheDocument();
+      expect(onRetry).not.toHaveBeenCalled();
+    });
+
+    it("hands the cookie fix up to the app", () => {
+      const onFixCookies = vi.fn();
+      renderItem(botError, vi.fn(), onFixCookies);
+
+      fireEvent.click(screen.getByRole("button", { name: t.fixCookies }));
+
+      expect(onFixCookies).toHaveBeenCalled();
+    });
   });
 });

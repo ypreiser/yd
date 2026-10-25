@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { useT } from "../lib/i18n";
+import { useT, translateError } from "../lib/i18n";
 import type { SearchResult, PlaylistInfo } from "../lib/tauri";
-import { searchYoutube, fetchPlaylist, cancelSearch } from "../lib/tauri";
+import { searchYoutube, fetchPlaylist, cancelSearch, logAppError } from "../lib/tauri";
 import PlaylistModal from "./PlaylistModal";
 import { isPlaylistUrl } from "../lib/youtube";
 
@@ -57,8 +57,15 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       const res = await searchYoutube(trimmed);
       if (id === searchIdRef.current) setResults(res);
     } catch (err) {
-      if (id === searchIdRef.current) setError(t.searchError);
+      if (id === searchIdRef.current) {
+        // Show a known, actionable message (e.g. YouTube's bot check) when we
+        // recognise it; otherwise stay generic instead of dumping raw stderr.
+        const raw = err instanceof Error ? err.message : String(err);
+        const known = translateError(raw, t);
+        setError(known === raw ? t.searchError : known);
+      }
       console.error("search failed:", err);
+      logAppError("search-ui", String(err)).catch(() => {});
     } finally {
       if (id === searchIdRef.current) setLoading(false);
     }
@@ -70,8 +77,9 @@ export default function SearchBar({ onDownload }: SearchBarProps) {
       try {
         const info = await fetchPlaylist(url);
         setPlaylistData(info);
-      } catch {
+      } catch (err) {
         // Fallback: download directly if playlist fetch fails
+        logAppError("playlist-ui", String(err)).catch(() => {});
         onDownload([url]);
       } finally {
         setPlaylistLoading(false);

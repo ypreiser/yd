@@ -1,13 +1,70 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { DownloadProgress } from "../lib/tauri";
-import { cancelDownload, getConfig } from "../lib/tauri";
+import { cancelDownload, getConfig, updateYtdlp } from "../lib/tauri";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { useT, translateError } from "../lib/i18n";
+import { useT, translateError, classifyError } from "../lib/i18n";
 import type { Translations } from "../lib/i18n";
 
 interface DownloadItemProps {
   item: DownloadProgress;
   onRetry?: (url: string) => void;
+  /** Opens Settings on the cookie section — offered on auth failures. */
+  onFixCookies?: () => void;
+}
+
+/**
+ * YouTube's "not a bot" check is the one error a user can usually clear
+ * themselves, so offer the two fixes right on the failed row: a newer yt-dlp
+ * (which often just works), or cookies from a signed-in session.
+ */
+function AuthErrorActions({
+  url,
+  onRetry,
+  onFixCookies,
+}: {
+  url: string;
+  onRetry?: (url: string) => void;
+  onFixCookies?: () => void;
+}) {
+  const t = useT();
+  const [state, setState] = useState<"idle" | "updating" | "failed">("idle");
+
+  async function handleUpdateAndRetry() {
+    setState("updating");
+    try {
+      await updateYtdlp();
+    } catch {
+      setState("failed");
+      return;
+    }
+    setState("idle");
+    onRetry?.(url);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {onRetry && (
+        <button
+          onClick={handleUpdateAndRetry}
+          disabled={state === "updating"}
+          className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+        >
+          {state === "updating" ? t.fixUpdating : t.fixUpdateYtdlp}
+        </button>
+      )}
+      {onFixCookies && (
+        <button
+          onClick={onFixCookies}
+          className="rounded border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        >
+          {t.fixCookies}
+        </button>
+      )}
+      {state === "failed" && (
+        <span className="text-xs text-red-500">{t.fixUpdateFailed}</span>
+      )}
+    </div>
+  );
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,7 +96,7 @@ const STATUS_KEYS: Record<string, keyof Translations> = {
   error: "error",
 };
 
-function DownloadItem({ item, onRetry }: DownloadItemProps) {
+function DownloadItem({ item, onRetry, onFixCookies }: DownloadItemProps) {
   const t = useT();
   const label = item.title || item.url;
   const canCancel = item.status === "downloading" || item.status === "queued";
@@ -142,7 +199,20 @@ function DownloadItem({ item, onRetry }: DownloadItemProps) {
             />
           </div>
         )}
-      {item.error && <p className="text-xs text-red-500 dark:text-red-400">{translateError(item.error, t)}</p>}
+      {item.error && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-red-500 dark:text-red-400">
+            {translateError(item.error, t)}
+          </p>
+          {classifyError(item.error) === "auth" && (
+            <AuthErrorActions
+              url={item.url}
+              onRetry={onRetry}
+              onFixCookies={onFixCookies}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

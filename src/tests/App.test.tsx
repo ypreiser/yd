@@ -4,6 +4,7 @@ import App from "../App";
 import * as tauriLib from "../lib/tauri";
 import * as eventLib from "@tauri-apps/api/event";
 import { DEFAULT_CONFIG } from "./setup";
+import { getTranslations } from "../lib/i18n";
 import type { DownloadProgress } from "../lib/tauri";
 
 // Helper to simulate a download-progress event from the backend
@@ -21,6 +22,8 @@ function simulateProgress(
     ...progress,
   });
 }
+
+const t = getTranslations("en");
 
 describe("App", () => {
   let capturedProgressCallback: ((progress: DownloadProgress) => void) | null = null;
@@ -95,18 +98,39 @@ describe("App", () => {
     });
   });
 
-  it("navigates to settings view when Settings button clicked", async () => {
+  it("opens settings as a drawer over the app when Settings is clicked", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
     });
+    // The app stays mounted behind the drawer instead of being replaced
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByText("No downloads yet")).toBeInTheDocument();
   });
 
-  it("navigates back to main when Back button clicked", async () => {
+  it("marks the settings toggle expanded while the drawer is open", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Back" })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      )
+    );
+  });
+
+  it("closes the drawer when Back is clicked", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
@@ -116,21 +140,49 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("textbox")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("clicking app title navigates back to main from settings", async () => {
+  it("closes the drawer when Escape is pressed", async () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: "Settings" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    await waitFor(() => screen.getByRole("heading", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("closes the drawer when the close button is clicked", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("dialog", { name: "Settings" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clicking the app title closes the drawer", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: "Settings" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("dialog", { name: "Settings" });
 
     fireEvent.click(screen.getByText("YD"));
 
     await waitFor(() => {
-      expect(screen.getByRole("textbox")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
@@ -386,6 +438,143 @@ describe("App", () => {
     await waitFor(() => {
       expect(batchSpy).toHaveBeenCalledWith(
         expect.arrayContaining(["https://www.youtube.com/watch?v=retryMe"])
+      );
+    });
+  });
+
+  describe("connection indicator", () => {
+    it("shows online when YouTube is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: true,
+      });
+      render(<App />);
+
+      expect(await screen.findByRole("status")).toHaveTextContent(t.online);
+    });
+
+    it("warns when the machine is online but YouTube is not reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: false,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          t.youtubeUnreachable
+        )
+      );
+    });
+
+    it("shows offline when nothing is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(t.offline)
+      );
+    });
+
+    it("warns above the input when offline", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      render(<App />);
+
+      expect(await screen.findByText(t.offlineBanner)).toBeInTheDocument();
+    });
+
+    it("warns differently when only YouTube is unreachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: false,
+      });
+      render(<App />);
+
+      expect(
+        await screen.findByText(t.youtubeUnreachableBanner)
+      ).toBeInTheDocument();
+    });
+
+    it("shows no banner while everything is reachable", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: true,
+        youtube: true,
+      });
+      render(<App />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(t.online)
+      );
+      expect(screen.queryByText(t.offlineBanner)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(t.youtubeUnreachableBanner)
+      ).not.toBeInTheDocument();
+    });
+
+    it("still allows downloads while offline — the probe can be wrong", async () => {
+      vi.spyOn(tauriLib, "checkConnectivity").mockResolvedValue({
+        online: false,
+        youtube: false,
+      });
+      const downloadSpy = vi
+        .spyOn(tauriLib, "downloadBatch")
+        .mockResolvedValue(["id-1"]);
+      render(<App />);
+      await screen.findByText(t.offlineBanner);
+
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, {
+        target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Download/i }));
+
+      await waitFor(() => expect(downloadSpy).toHaveBeenCalled());
+    });
+  });
+
+  describe("history tab", () => {
+    it("switches to history and back", async () => {
+      vi.spyOn(tauriLib, "historyList").mockResolvedValue([]);
+      render(<App />);
+      await waitFor(() => screen.getByRole("tab", { name: t.history }));
+
+      fireEvent.click(screen.getByRole("tab", { name: t.history }));
+
+      expect(await screen.findByText(t.historyEmpty)).toBeInTheDocument();
+      // The in-progress list is not shown alongside history
+      expect(screen.queryByText(t.noDownloads)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("tab", { name: "URL" }));
+      expect(await screen.findByText(t.noDownloads)).toBeInTheDocument();
+    });
+
+    it("re-downloading from history queues the URL", async () => {
+      vi.spyOn(tauriLib, "historyList").mockResolvedValue([
+        {
+          id: "h1",
+          url: "https://youtu.be/abc",
+          title: "Old song",
+          file_path: null,
+          format: "m4a",
+          completed_at: 1_700_000_000,
+        },
+      ]);
+      const downloadSpy = vi
+        .spyOn(tauriLib, "downloadBatch")
+        .mockResolvedValue(["id-1"]);
+      render(<App />);
+
+      fireEvent.click(await screen.findByRole("tab", { name: t.history }));
+      fireEvent.click(await screen.findByRole("button", { name: t.redownload }));
+
+      await waitFor(() =>
+        expect(downloadSpy).toHaveBeenCalledWith(["https://youtu.be/abc"])
       );
     });
   });

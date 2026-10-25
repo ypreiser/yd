@@ -10,6 +10,10 @@ Tauri v2 desktop app for downloading YouTube songs as audio files using yt-dlp.
 - Configurable download directory
 - Progress tracking per download
 - Bundled yt-dlp + ffmpeg (no external dependencies)
+- Online / offline indicator (tells "no internet" apart from "YouTube unreachable")
+- Cookie support with in-app, step-by-step instructions for YouTube's bot check
+- Local error log and a one-click, user-reviewed bug report
+- Download history that survives restarts, with re-download and reveal-in-folder
 
 ## Install
 
@@ -30,6 +34,19 @@ Place these in `src-tauri/binaries/`:
 1. **yt-dlp**: Download from [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases/latest) → `yt-dlp.exe` → rename to `yt-dlp-x86_64-pc-windows-msvc.exe`
 2. **ffmpeg + ffprobe**: Download from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) → extract `ffmpeg.exe` and `ffprobe.exe` → rename to `ffmpeg-x86_64-pc-windows-msvc.exe` and `ffprobe-x86_64-pc-windows-msvc.exe`
 
+### Checks
+
+```bash
+npx tsc --noEmit          # types
+npm test                  # unit tests (vitest)
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+CI (`.github/workflows/ci.yml`) runs all of these on every push to `main` and
+every pull request. The Rust job runs on Windows, the shipped target.
+
 ### Build & run
 
 ```bash
@@ -37,6 +54,99 @@ npm install
 npm run tauri dev    # development
 npm run tauri build  # production (outputs MSI + NSIS installer)
 ```
+
+## Troubleshooting
+
+### `Sign in to confirm you're not a bot`
+
+YouTube throws this at requests that come from an unauthenticated session. Two
+things fix it, in order of effort:
+
+1. **Update yt-dlp** — Settings → yt-dlp Version → Check / Update. YouTube
+   changes its checks often and yt-dlp keeps up.
+2. **Give yt-dlp cookies from a signed-in session** — Settings → YouTube
+   Cookies:
+   - **From browser**: pick the browser you're signed in to YouTube with.
+     On Windows this means **Firefox** — Chrome, Edge, Brave, Opera and Vivaldi
+     use app-bound encryption (Chrome 127+), which ties the cookie store to the
+     browser process itself. yt-dlp finds those cookies and then fails with
+     "Failed to decrypt with DPAPI", and no setting on our side can change that.
+     Settings warns before you hit it, and **Test cookies** confirms whether the
+     source actually works before you queue a download.
+   - **cookies.txt file**: export cookies for `youtube.com` in Netscape format
+     with a browser extension and point the app at the file. This is the option
+     that always works, including on Windows.
+
+Cookie handling notes:
+
+- Cookies give this app the same access to YouTube as your logged-in browser.
+  Prefer a throwaway Google account over your main one.
+- Export from a private/incognito window that you close *without logging out*
+  after exporting — otherwise YouTube rotates the cookies and they stop working.
+- The cookies file is read by yt-dlp straight from the path you choose; the app
+  never copies, uploads or logs its contents. Keep the file somewhere only your
+  user account can read.
+- Only the browser names in the dropdown and an existing absolute file path are
+  accepted, so a hand-edited `config.json` can't turn these settings into extra
+  yt-dlp command-line flags.
+
+## Avoiding the bot check
+
+Beyond cookies, the app paces its own requests: one second between metadata
+requests, a 1-5 second random gap before each download, and exponential-backoff
+retries. Batches of five parallel downloads are what trips YouTube's bot check
+most often, and pacing them costs a few seconds while making the check much
+rarer.
+
+## Reporting a problem
+
+Settings → **Report a Problem**:
+
+1. **Prepare report** builds the report text — app/OS/yt-dlp version, the current
+   audio and cookie settings, and the last 40 logged errors.
+2. The full text is shown for review first. Nothing leaves the machine until you
+   press **Open GitHub issue**, which opens a browser with the text pre-filled
+   in a new issue you still have to submit yourself. **Copy** puts the same text
+   on the clipboard if you'd rather send it another way.
+3. **Open log folder** reveals `errors.log`; **Clear log** empties it.
+
+What the log contains, and what it never contains:
+
+- Errors are redacted *as they are written*, not when a report is built, so the
+  file on disk is already safe to share: the home directory is replaced with
+  `~`, the user name with `<user>`, and any `--cookies`, `--cookies-from-browser`
+  or `Cookie:` value with `<redacted>`.
+- The report deliberately omits your download directory and cookie file path.
+- The log rotates at 256 KB and keeps one previous file, so it cannot grow
+  without bound.
+
+## Updating yt-dlp
+
+Settings → yt-dlp Version → Check / Update downloads the latest yt-dlp from its
+GitHub releases. Before anything is written to disk:
+
+1. `SHA2-256SUMS.sig` is verified against yt-dlp's release signing key, pinned in
+   this app at `src-tauri/keys/ytdlp-signing-key.asc`
+   (`AC0C BBE6 848D 6A87 3464  AF4E 57CF 6593 3B5A 7581`).
+2. The binary's SHA-256 is matched against the now-trusted checksum line, by
+   exact filename.
+
+If yt-dlp rotates its signing key, updates will fail with a signature error
+until this app ships the new key. That is deliberate — refusing beats installing
+code that cannot be verified. To update the pinned key, replace that file and
+the fingerprint constant in `src-tauri/src/signature.rs`, then refresh the
+fixtures in `src-tauri/fixtures/` so the tests cover the new key.
+
+## Network activity
+
+Besides yt-dlp's own traffic, the app makes two kinds of request:
+
+- **Update checks** to the GitHub API (yt-dlp) and the app's update endpoint.
+- **Connectivity probes** every 30 seconds while the app is open:
+  `https://www.youtube.com/generate_204`, and only if that fails,
+  `https://www.cloudflare.com/cdn-cgi/trace` to tell "offline" apart from
+  "YouTube unreachable". Both are no-content endpoints; nothing about you or
+  your downloads is sent.
 
 ## Screenshots
 

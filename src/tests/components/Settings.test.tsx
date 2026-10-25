@@ -9,10 +9,18 @@ import { DEFAULT_CONFIG } from "../setup";
 
 const t = getTranslations("en");
 
-function renderSettings(onClose = vi.fn(), onConfigSaved = vi.fn()) {
+function renderSettings(
+  onClose = vi.fn(),
+  onConfigSaved = vi.fn(),
+  focusSection: "cookies" | null = null
+) {
   return render(
     <I18nContext.Provider value={t}>
-      <Settings onClose={onClose} onConfigSaved={onConfigSaved} />
+      <Settings
+        onClose={onClose}
+        onConfigSaved={onConfigSaved}
+        focusSection={focusSection}
+      />
     </I18nContext.Provider>
   );
 }
@@ -279,6 +287,286 @@ describe("Settings", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith({ directory: true, multiple: false });
+    });
+  });
+
+  describe("YouTube cookies", () => {
+    it("defaults to no cookies and hides the browser/file inputs", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesNone }));
+      expect(screen.queryByLabelText(t.cookiesBrowser)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(t.cookiesFile)).not.toBeInTheDocument();
+    });
+
+    it("selecting 'from browser' defaults to firefox and saves it", async () => {
+      const setConfigSpy = vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromBrowser }));
+
+      const select = (await screen.findByLabelText(t.cookiesBrowser)) as HTMLSelectElement;
+      expect(select.value).toBe("firefox");
+
+      await userEvent.selectOptions(select, "chrome");
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      await waitFor(() => {
+        const saved = setConfigSpy.mock.calls[0][0] as AppConfig;
+        expect(saved.cookies_mode).toBe("browser");
+        expect(saved.cookies_browser).toBe("chrome");
+      });
+    });
+
+    it("selecting 'from file' saves the chosen cookies path", async () => {
+      const setConfigSpy = vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromFile }));
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromFile }));
+
+      const input = (await screen.findByLabelText(t.cookiesFile)) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "C:\\cookies.txt" } });
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      await waitFor(() => {
+        const saved = setConfigSpy.mock.calls[0][0] as AppConfig;
+        expect(saved.cookies_mode).toBe("file");
+        expect(saved.cookies_file).toBe("C:\\cookies.txt");
+      });
+    });
+
+    it("warns about account access once cookies are enabled", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      expect(screen.queryByText(t.cookiesWarning)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesFromBrowser }));
+      expect(await screen.findByText(t.cookiesWarning)).toBeInTheDocument();
+    });
+
+    it("keeps the dialog open and shows the reason when saving is rejected", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockRejectedValue("Cookies file does not exist");
+      const onClose = vi.fn();
+      const onConfigSaved = vi.fn();
+      renderSettings(onClose, onConfigSaved);
+
+      await waitFor(() => screen.getByRole("button", { name: t.save }));
+      fireEvent.click(screen.getByRole("button", { name: t.save }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(t.settingsSaveError);
+      expect(alert).toHaveTextContent("Cookies file does not exist");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onConfigSaved).not.toHaveBeenCalled();
+
+      // Save stays usable for a retry
+      expect(screen.getByRole("button", { name: t.save })).not.toBeDisabled();
+    });
+  });
+
+  describe("cookie instructions", () => {
+    it("shows step-by-step instructions for both cookie sources", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByText(t.cookiesHowTo));
+      for (const step of t.cookiesStepsBrowser) {
+        expect(screen.getByText(step)).toBeInTheDocument();
+      }
+      for (const step of t.cookiesStepsFile) {
+        expect(screen.getByText(step)).toBeInTheDocument();
+      }
+    });
+
+    it("links to the yt-dlp export guide", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      renderSettings();
+
+      const link = await screen.findByRole("button", {
+        name: `${t.cookiesGuideLink} ↗`,
+      });
+      fireEvent.click(link);
+
+      expect(openUrl).toHaveBeenCalledWith(
+        expect.stringContaining("yt-dlp/yt-dlp/wiki/Extractors")
+      );
+    });
+  });
+
+  describe("problem reports", () => {
+    it("does not show any report until the user asks for one", async () => {
+      renderSettings();
+
+      await waitFor(() => screen.getByRole("button", { name: t.prepareReport }));
+      expect(screen.queryByLabelText(t.reportProblem)).not.toBeInTheDocument();
+      expect(screen.queryByText(t.reportConsent)).not.toBeInTheDocument();
+    });
+
+    it("shows the report and the consent note after preparing it", async () => {
+      vi.spyOn(tauriLib, "buildErrorReport").mockResolvedValue("### Environment\n- App: YD 1.2.1\n");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+
+      const textarea = (await screen.findByLabelText(t.reportProblem)) as HTMLTextAreaElement;
+      expect(textarea.value).toContain("App: YD 1.2.1");
+      expect(textarea).toHaveAttribute("readonly");
+      expect(screen.getByText(t.reportConsent)).toBeInTheDocument();
+    });
+
+    it("opens a prefilled GitHub issue only when asked, with the report as the body", async () => {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      vi.spyOn(tauriLib, "buildErrorReport").mockResolvedValue("boom happened");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+      await screen.findByLabelText(t.reportProblem);
+      expect(openUrl).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: t.openGithubIssue }));
+
+      await waitFor(() => {
+        expect(openUrl).toHaveBeenCalledWith(
+          expect.stringContaining("github.com/ypreiser/yd/issues/new")
+        );
+      });
+      const url = (openUrl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(url).toContain(encodeURIComponent("boom happened"));
+    });
+
+    it("reveals the log file and clears the log", async () => {
+      const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+      vi.spyOn(tauriLib, "errorLogInfo").mockResolvedValue({
+        path: "/home/test/.local/share/yd/logs/errors.log",
+        entries: 3,
+      });
+      const clearSpy = vi.spyOn(tauriLib, "clearErrorLog").mockResolvedValue(undefined);
+      renderSettings();
+
+      expect(await screen.findByText(t.logEntries(3))).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: t.openLogFolder }));
+      expect(revealItemInDir).toHaveBeenCalledWith(
+        "/home/test/.local/share/yd/logs/errors.log"
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: t.clearLog }));
+      await waitFor(() => expect(clearSpy).toHaveBeenCalled());
+      expect(await screen.findByText(t.logEntries(0))).toBeInTheDocument();
+    });
+
+    it("reports a failure to build the report instead of failing silently", async () => {
+      vi.spyOn(tauriLib, "buildErrorReport").mockRejectedValue("no app data dir");
+      renderSettings();
+
+      fireEvent.click(await screen.findByRole("button", { name: t.prepareReport }));
+
+      expect(await screen.findByText(t.reportError)).toBeInTheDocument();
+    });
+  });
+
+  describe("opened from an auth error", () => {
+    it("expands the cookie instructions when focused on cookies", async () => {
+      renderSettings(vi.fn(), vi.fn(), "cookies");
+
+      const details = (await screen.findByText(t.cookiesHowTo)).closest("details");
+      expect(details).toHaveAttribute("open");
+    });
+
+    it("leaves the instructions collapsed otherwise", async () => {
+      renderSettings();
+
+      const details = (await screen.findByText(t.cookiesHowTo)).closest("details");
+      expect(details).not.toHaveAttribute("open");
+    });
+
+    it("scrolls the cookie section into view", async () => {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      renderSettings(vi.fn(), vi.fn(), "cookies");
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    });
+  });
+
+  describe("cookie diagnostics", () => {
+    async function chooseBrowser(browser: string) {
+      renderSettings();
+      fireEvent.click(
+        await screen.findByRole("button", { name: t.cookiesFromBrowser })
+      );
+      const select = (await screen.findByLabelText(
+        t.cookiesBrowser
+      )) as HTMLSelectElement;
+      await userEvent.selectOptions(select, browser);
+      return select;
+    }
+
+    it("warns that a Chromium browser cannot work on Windows", async () => {
+      await chooseBrowser("chrome");
+      expect(screen.getByText(t.cookiesChromiumWarning)).toBeInTheDocument();
+    });
+
+    it("does not warn for Firefox", async () => {
+      await chooseBrowser("firefox");
+      expect(
+        screen.queryByText(t.cookiesChromiumWarning)
+      ).not.toBeInTheDocument();
+    });
+
+    it("reports a working cookie source", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "ok",
+        detail: "",
+      });
+      await chooseBrowser("firefox");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+
+      expect(await screen.findByText(t.cookiesTestOk)).toBeInTheDocument();
+    });
+
+    it("explains the DPAPI failure instead of showing raw yt-dlp output", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "decrypt_failed",
+        detail: "WARNING: Failed to decrypt with DPAPI",
+      });
+      await chooseBrowser("chrome");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+
+      expect(
+        await screen.findByText(t.cookiesTestDecryptFailed)
+      ).toBeInTheDocument();
+    });
+
+    it("clears a stale result when the browser changes", async () => {
+      vi.spyOn(tauriLib, "setConfig").mockResolvedValue(undefined);
+      vi.spyOn(tauriLib, "testCookies").mockResolvedValue({
+        status: "ok",
+        detail: "",
+      });
+      const select = await chooseBrowser("firefox");
+
+      fireEvent.click(screen.getByRole("button", { name: t.cookiesTest }));
+      await screen.findByText(t.cookiesTestOk);
+
+      await userEvent.selectOptions(select, "chrome");
+
+      expect(screen.queryByText(t.cookiesTestOk)).not.toBeInTheDocument();
+    });
+
+    it("offers no test button when cookies are off", async () => {
+      renderSettings();
+      await waitFor(() => screen.getByRole("button", { name: t.cookiesNone }));
+      expect(
+        screen.queryByRole("button", { name: t.cookiesTest })
+      ).not.toBeInTheDocument();
     });
   });
 });
